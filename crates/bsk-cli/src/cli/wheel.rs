@@ -24,7 +24,7 @@ pub struct WheelArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]

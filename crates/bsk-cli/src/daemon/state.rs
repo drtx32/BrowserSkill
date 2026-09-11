@@ -56,6 +56,7 @@ pub struct DaemonState {
     /// Operation-scoped local file staging. The extension only sees paths
     /// minted here; agent-facing RPCs use opaque transfer ids.
     pub transfers: Arc<TransferRegistry>,
+    pub logical_sessions: Arc<super::logical_session::LogicalSessionStore>,
 }
 
 impl DaemonState {
@@ -73,6 +74,7 @@ impl DaemonState {
         let abort_registry = Arc::new(AbortRegistry::new());
         let session_interrupts = Arc::new(SessionInterruptRegistry::new());
         let transfers = Arc::new(TransferRegistry::new().expect("initialise transfer staging"));
+        let logical_sessions = Arc::new(super::logical_session::LogicalSessionStore::load());
         Self {
             audit,
             config,
@@ -83,6 +85,7 @@ impl DaemonState {
             tool_inflight,
             session_interrupts,
             transfers,
+            logical_sessions,
         }
     }
 }

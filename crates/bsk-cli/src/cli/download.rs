@@ -30,7 +30,7 @@ pub struct DownloadArgs {
     pub selector: Option<String>,
     #[arg(long)]
     pub out: PathBuf,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
     #[arg(long = "tab-id")]
     pub tab_id: Option<i64>,

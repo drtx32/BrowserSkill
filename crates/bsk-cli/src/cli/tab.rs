@@ -64,7 +64,7 @@ impl From<CliScope> for TabScope {
 #[derive(Debug, Clone, Args)]
 pub struct TabListArgs {
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// View scope (defaults to `all`).
@@ -75,7 +75,7 @@ pub struct TabListArgs {
 #[derive(Debug, Clone, Args)]
 pub struct TabCreateArgs {
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
     /// Destination URL (default `chrome://newtab/`).
     #[arg(long)]
@@ -92,7 +92,7 @@ pub struct TabCreateArgs {
 pub struct TabCloseArgs {
     /// Tab id to close (must be in the session's Agent Window).
     pub tab_id: i64,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 }
 
@@ -100,7 +100,7 @@ pub struct TabCloseArgs {
 pub struct TabSelectArgs {
     /// Tab id to activate.
     pub tab_id: i64,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 }
 
@@ -108,7 +108,7 @@ pub struct TabSelectArgs {
 pub struct TabBorrowArgs {
     /// User-window tab id to borrow into the session's Agent Window.
     pub tab_id: i64,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
     /// Skip the inline confirmation overlay when borrowing a tab.
     /// Accepted for forward compatibility; currently has no effect.
@@ -120,7 +120,7 @@ pub struct TabBorrowArgs {
 pub struct TabReturnArgs {
     /// Borrowed tab id to return to its origin window.
     pub tab_id: i64,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 }
 

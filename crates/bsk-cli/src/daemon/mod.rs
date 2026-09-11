@@ -8,6 +8,7 @@ pub mod file_transfer;
 pub mod inflight;
 pub mod info;
 pub mod ipc;
+pub mod logical_session;
 pub mod lockfile;
 pub mod paths;
 pub(crate) mod probe;

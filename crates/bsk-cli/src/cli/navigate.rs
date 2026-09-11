@@ -103,7 +103,7 @@ pub struct NavigateArgs {
     pub url: Option<String>,
 
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: Option<String>,
 
     /// Target tab. Defaults to the Agent Window's active tab.
@@ -121,7 +121,7 @@ pub struct NavigateArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct NavigateHistoryArgs {
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -136,7 +136,7 @@ pub struct NavigateHistoryArgs {
 
 #[derive(Debug, Clone, Args)]
 pub struct ReloadArgs {
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]

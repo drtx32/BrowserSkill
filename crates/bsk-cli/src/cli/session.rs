@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::ensure_daemon::ensure_daemon;
 use crate::cli::error::{self, CliError, Format, RenderExtras};
+use crate::daemon::logical_session::DEFAULT_SESSION;
 use crate::daemon::browsers::EXTENSION_CONNECT_WAIT;
 
 const SESSION_STOP_IPC_TIMEOUT: Duration = Duration::from_secs(60 * 60);
@@ -90,7 +91,7 @@ fn window_size(s: &str) -> Result<u32, String> {
 #[derive(Debug, Clone, Args)]
 pub struct SessionStopArgs {
     /// Session id to stop (omit when `--all` is set).
-    #[arg(value_name = "SESSION_ID")]
+    #[arg(value_name = "SESSION_ID", default_value = "default")]
     pub session_id: Option<String>,
 
     /// Stop every active session.
@@ -201,7 +202,7 @@ fn run_start(sock: PathBuf, args: SessionStartArgs, format: Format) -> Result<()
                 println!(
                     "{}",
                     serde_json::to_string_pretty(&serde_json::json!({
-                        "session_id": reply.session_id,
+                        "session_id": DEFAULT_SESSION,
                         "browser_instance_id": reply.browser_instance_id,
                         "agent_window_id": reply.agent_window_id,
                     }))
@@ -209,7 +210,7 @@ fn run_start(sock: PathBuf, args: SessionStartArgs, format: Format) -> Result<()
                 );
             }
             Format::Human => {
-                println!("{}", reply.session_id);
+                println!("{}", DEFAULT_SESSION);
             }
         },
         Err(err) => return Err(handle_start_error(err, format)),

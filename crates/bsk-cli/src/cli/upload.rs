@@ -49,7 +49,7 @@ pub struct UploadArgs {
     /// Browser mechanism used to deliver the staged files.
     #[arg(long, value_enum, default_value_t)]
     pub mode: UploadModeArg,
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
     #[arg(long = "tab-id")]
     pub tab_id: Option<i64>,

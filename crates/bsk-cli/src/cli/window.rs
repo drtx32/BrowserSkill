@@ -26,7 +26,7 @@ pub enum WindowSub {
 #[derive(Debug, Clone, Args)]
 pub struct WindowResizeArgs {
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// New Agent Window outer width in CSS pixels (100..=7680).
