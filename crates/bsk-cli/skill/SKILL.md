@@ -18,12 +18,17 @@ wants instructions. Never extract credentials, cookies, tokens, or other secrets
 
 ## Required lifecycle
 
-Every browser task owns a bounded session:
+Every browser task uses the stable logical `default` session unless it needs
+to explicitly select another session:
 
 ```text
-1. bsk session start              # retain the printed 4-letter session id
-2. bsk ... --session <id>         # pass it to every session-scoped command
-3. bsk session stop <id>          # always run on success and error paths
+1. bsk session start              # optional; establishes the default session
+2. bsk ...                        # session arguments default to `default`
+3. bsk session stop               # always run on success and error paths
+
+The daemon resolves `default` to the current physical session and stores
+recoverable metadata in the user BSK state directory. Physical ids are not
+durable agent-facing identifiers.
 ```
 
 Do not rely on the idle timeout for cleanup. Stop the session as soon as the goal is met unless the

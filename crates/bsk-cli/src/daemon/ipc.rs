@@ -41,6 +41,7 @@ use tokio::task::JoinHandle;
 use tracing::{debug, warn};
 
 use super::abort::AbortRegistry;
+use super::logical_session::DEFAULT_SESSION;
 use super::queue::{DEFAULT_TOOL_TIMEOUT, DispatchError};
 use super::sessions::{
     AgentWindowOptions, SessionId, StartSessionError, StopSessionError, snapshot_status_entries,
@@ -207,6 +208,14 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
             if let Some(object) = params.as_object_mut() {
                 object.remove("_audit_id");
             }
+            // Agent-facing commands use the stable logical alias. Resolve it
+            // at the daemon boundary so physical ids never leak into normal
+            // workflows and can be replaced without changing the command.
+            if is_tool_method(&method)
+                && let Err(error) = resolve_default_session(&state, &mut params).await
+            {
+                return ResponseBody::Err(error);
+            }
             let ticket = if serde_json::to_value(&method)
                 .ok()
                 .and_then(|v| v.as_str().map(|s| s.starts_with("tool.")))
@@ -309,6 +318,53 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
             body
         })
     })
+}
+
+fn is_tool_method(method: &Method) -> bool {
+    serde_json::to_value(method)
+        .ok()
+        .and_then(|value| value.as_str().map(|name| name.starts_with("tool.")))
+        .unwrap_or(false)
+}
+
+async fn resolve_default_session(
+    state: &Arc<DaemonState>,
+    params: &mut Value,
+) -> Result<(), RpcError> {
+    let Some(object) = params.as_object_mut() else {
+        return Err(invalid_params("tool RPC params must be an object"));
+    };
+    let Some(logical) = object.get("session_id").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    if logical != DEFAULT_SESSION {
+        return Ok(());
+    }
+    let physical = if let Some(id) = state.logical_sessions.resolve(&state.sessions, logical) {
+        id
+    } else {
+        let session = start_session(
+            &state.browsers,
+            &state.sessions,
+            &state.tool_queues,
+            None,
+            AgentWindowOptions::default(),
+            state.config.extension_connect_wait,
+            DEFAULT_RPC_TIMEOUT,
+            None,
+        ).await.map_err(map_start_error)?;
+        state
+            .logical_sessions
+            .set_default(&session.id)
+            .map_err(|error| RpcError {
+                code: ErrorCode::ProtocolError,
+                message: format!("could not persist current session: {error}"),
+                data: None,
+            })?;
+        session.id
+    };
+    object.insert("session_id".into(), Value::String(physical.0));
+    Ok(())
 }
 
 /// IPC entry point for `tool.*` RPCs (M6+). Looks up the per-session
@@ -913,6 +969,9 @@ async fn handle_session_start(
     .await
     {
         Ok(session) => {
+            if let Err(error) = state.logical_sessions.set_default(&session.id) {
+                warn!(%error, "could not persist current logical session");
+            }
             if let Some(name) = task_name {
                 state.audit.set_name(&session.id.0, &name);
             }
@@ -1001,7 +1060,10 @@ async fn handle_session_stop(
         return handle_session_stop_all(state, Some(cancel)).await;
     }
     let session_id = match params.session_id {
-        Some(s) => SessionId(s),
+        Some(s) => match state.logical_sessions.resolve(&state.sessions, &s) {
+            Some(id) => id,
+            None => SessionId(s),
+        },
         None => {
             return Err(RpcError {
                 code: ErrorCode::InvalidParams,
@@ -1022,6 +1084,7 @@ async fn handle_session_stop(
     .await
     {
         Ok(stop) => {
+            state.logical_sessions.clear_if(&session_id);
             state.transfers.release_session(&session_id.0);
             let result = CliSessionStopResult {
                 stopped: vec![session_id.0],
@@ -1122,6 +1185,7 @@ async fn handle_session_stop_all(
         .await
         {
             Ok(stop) => {
+                state.logical_sessions.clear_if(&id);
                 state.transfers.release_session(&id.0);
                 stopped.push(id.0);
                 returned_tab_ids.extend(stop.returned_tab_ids);

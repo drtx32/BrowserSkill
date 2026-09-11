@@ -114,7 +114,7 @@ pub struct ClickArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -208,7 +208,7 @@ pub struct HoverArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -291,7 +291,7 @@ pub struct FocusArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -348,7 +348,7 @@ pub struct BlurArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -414,7 +414,7 @@ pub struct FillArgs {
     #[arg(long = "selector")]
     pub selector: Option<String>,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]
@@ -481,7 +481,7 @@ pub struct PressArgs {
     /// Key spec (`Enter`, `Ctrl+A`, `ArrowLeft`, `a`).
     pub key: String,
 
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     #[arg(long = "tab-id")]

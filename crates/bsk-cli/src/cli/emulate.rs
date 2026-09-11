@@ -118,7 +118,7 @@ pub fn find_preset(name: &str) -> Option<&'static DevicePreset> {
 #[derive(Debug, Clone, Args)]
 pub struct EmulateArgs {
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// Target tab. Defaults to the Agent Window's active tab.

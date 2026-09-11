@@ -24,7 +24,7 @@ use crate::cli::navigate::{CliWaitUntil, parse_timeout_ms};
 
 #[derive(Debug, Clone, Args)]
 pub struct WaitForNavigationArgs {
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// Target tab. Defaults to the Agent Window's active tab.
