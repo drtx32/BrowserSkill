@@ -352,7 +352,9 @@ async fn resolve_default_session(
             state.config.extension_connect_wait,
             DEFAULT_RPC_TIMEOUT,
             None,
-        ).await.map_err(map_start_error)?;
+        )
+        .await
+        .map_err(map_start_error)?;
         state
             .logical_sessions
             .set_default(&session.id)

@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::cli::ensure_daemon::ensure_daemon;
 use crate::cli::error::{self, CliError, Format, RenderExtras};
-use crate::daemon::logical_session::DEFAULT_SESSION;
 use crate::daemon::browsers::EXTENSION_CONNECT_WAIT;
+use crate::daemon::logical_session::DEFAULT_SESSION;
 
 const SESSION_STOP_IPC_TIMEOUT: Duration = Duration::from_secs(60 * 60);
 
