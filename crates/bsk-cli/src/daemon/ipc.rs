@@ -340,6 +340,8 @@ async fn handle_tool_dispatch(
             note: Some(crate::cli::human_loop::REQUEST_HELP_DISABLED_NOTE.into()),
             tab_id: params.get("tab_id").and_then(Value::as_i64).unwrap_or(0),
             resolved_targets: None,
+            state_diff: None,
+            goal_verified: None,
         };
         return ResponseBody::Ok(serde_json::to_value(result).unwrap_or(Value::Null));
     }

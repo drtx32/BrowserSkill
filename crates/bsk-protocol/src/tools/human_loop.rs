@@ -131,6 +131,44 @@ pub struct ResolvedTarget {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HelpCheckpointSummary {
+    pub url: String,
+    pub tabs: Vec<HelpTabSummary>,
+    pub dom_signature: String,
+    pub accessibility_signature: String,
+    pub indicators: HelpIndicators,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HelpTabSummary {
+    pub id: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HelpIndicators {
+    pub login: bool,
+    pub upload: bool,
+    pub success: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct HelpStateDiff {
+    pub changed: Vec<String>,
+    pub url_changed: bool,
+    pub tabs_changed: bool,
+    pub dom_changed: bool,
+    pub accessibility_changed: bool,
+    pub indicators_changed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<HelpCheckpointSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<HelpCheckpointSummary>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct RequestHelpResult {
     pub outcome: HelpOutcome,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -140,6 +178,10 @@ pub struct RequestHelpResult {
     pub tab_id: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resolved_targets: Option<Vec<ResolvedTarget>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_diff: Option<HelpStateDiff>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal_verified: Option<bool>,
 }
 
 #[cfg(test)]
@@ -224,6 +266,8 @@ mod tests {
                 ref_: Some("@e1".into()),
                 selector: None,
             }]),
+            state_diff: None,
+            goal_verified: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         let round: RequestHelpResult = serde_json::from_value(v).unwrap();

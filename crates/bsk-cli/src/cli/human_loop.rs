@@ -106,6 +106,8 @@ pub fn dispatch(args: RequestHelpArgs, format: Format) -> Result<(), CliError> {
             note: Some(REQUEST_HELP_DISABLED_NOTE.into()),
             tab_id: args.tab_id.unwrap_or(0),
             resolved_targets: None,
+            state_diff: None,
+            goal_verified: None,
         };
         return render(&result, format);
     }

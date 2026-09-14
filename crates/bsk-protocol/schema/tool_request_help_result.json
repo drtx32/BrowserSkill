@@ -38,6 +38,22 @@
     "tab_id": {
       "type": "integer",
       "format": "int64"
+    },
+    "goal_verified": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "state_diff": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/HelpStateDiff"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "definitions": {
@@ -115,6 +131,49 @@
             "null"
           ]
         }
+      }
+    },
+    "HelpIndicators": {
+      "type": "object",
+      "required": ["login", "upload", "success"],
+      "properties": {
+        "login": { "type": "boolean" },
+        "upload": { "type": "boolean" },
+        "success": { "type": "boolean" }
+      }
+    },
+    "HelpTabSummary": {
+      "type": "object",
+      "required": ["id", "active"],
+      "properties": {
+        "id": { "type": "integer", "format": "int64" },
+        "url": { "type": ["string", "null"] },
+        "active": { "type": "boolean" }
+      }
+    },
+    "HelpCheckpointSummary": {
+      "type": "object",
+      "required": ["url", "tabs", "dom_signature", "accessibility_signature", "indicators"],
+      "properties": {
+        "url": { "type": "string" },
+        "tabs": { "type": "array", "items": { "$ref": "#/definitions/HelpTabSummary" } },
+        "dom_signature": { "type": "string" },
+        "accessibility_signature": { "type": "string" },
+        "indicators": { "$ref": "#/definitions/HelpIndicators" }
+      }
+    },
+    "HelpStateDiff": {
+      "type": "object",
+      "required": ["changed", "url_changed", "tabs_changed", "dom_changed", "accessibility_changed", "indicators_changed"],
+      "properties": {
+        "changed": { "type": "array", "items": { "type": "string" } },
+        "url_changed": { "type": "boolean" },
+        "tabs_changed": { "type": "boolean" },
+        "dom_changed": { "type": "boolean" },
+        "accessibility_changed": { "type": "boolean" },
+        "indicators_changed": { "type": "boolean" },
+        "before": { "anyOf": [{ "$ref": "#/definitions/HelpCheckpointSummary" }, { "type": "null" }] },
+        "after": { "anyOf": [{ "$ref": "#/definitions/HelpCheckpointSummary" }, { "type": "null" }] }
       }
     }
   }

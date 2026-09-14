@@ -748,6 +748,32 @@ export interface RequestHelpResult {
   note?: string;
   tab_id: number;
   resolved_targets?: ResolvedTarget[];
+  /** State observed after control returned; handoff itself is not completion. */
+  state_diff?: HelpStateDiff;
+  goal_verified?: boolean;
+}
+
+export interface HelpStateDiff {
+  changed: string[];
+  url_changed: boolean;
+  tabs_changed: boolean;
+  dom_changed: boolean;
+  accessibility_changed: boolean;
+  indicators_changed: boolean;
+  before?: HelpCheckpointSummary;
+  after?: HelpCheckpointSummary;
+}
+
+export interface HelpCheckpointSummary {
+  url: string;
+  tabs: Array<{ id: number; url?: string; active: boolean }>;
+  dom_signature: string;
+  accessibility_signature: string;
+  indicators: {
+    login: boolean;
+    upload: boolean;
+    success: boolean;
+  };
 }
 
 // --------------------------------------------------------------------------

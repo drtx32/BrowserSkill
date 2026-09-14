@@ -23,6 +23,8 @@ import type {
   HelpTarget,
   RequestHelpParams,
   RequestHelpResult,
+  type HelpCheckpointSummary,
+  type HelpStateDiff,
   ResolvedTarget,
   RpcError,
 } from "@/transport/types";
@@ -86,7 +88,82 @@ interface ActiveHelpRequest {
   timeoutTimer: ReturnType<typeof setTimeout>;
   completionTimer: ReturnType<typeof setInterval> | null;
   completionMatchedSince: number | null;
+  checkpoint: HelpCheckpointSummary;
   abortHandler: (() => void) | null;
+}
+
+function fingerprint(value: unknown): string {
+  const text = JSON.stringify(value) ?? "";
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16);
+}
+
+async function captureHelpCheckpoint(
+  help: Pick<ActiveHelpRequest, "primaryTabId" | "deps">,
+): Promise<HelpCheckpointSummary> {
+  const tab = await help.deps.tabsApi.get(help.primaryTabId).catch(() => ({ url: "" } as chrome.tabs.Tab));
+  const tabs = typeof tab.windowId === "number"
+    ? await help.deps.tabsApi.query({ windowId: tab.windowId }).catch(() => [])
+    : [];
+  const tabSummary = tabs
+    .filter((item): item is chrome.tabs.Tab & { id: number } => typeof item.id === "number")
+    .map((item) => ({ id: item.id, ...(item.url ? { url: item.url } : {}), active: item.active === true }))
+    .sort((a, b) => a.id - b.id);
+  let dom: unknown = null;
+  let accessibility: unknown = null;
+  let indicators = { login: false, upload: false, success: false };
+  if (help.deps.cdp) {
+    try {
+      dom = await help.deps.cdp.send(help.primaryTabId, "DOMSnapshot.captureSnapshot", {
+        computedStyles: [],
+      });
+    } catch { /* best effort: a detached page is still a meaningful state */ }
+    try {
+      accessibility = await help.deps.cdp.send(help.primaryTabId, "Accessibility.getFullAXTree");
+    } catch { /* best effort */ }
+    try {
+      const response = await help.deps.cdp.send<{ result?: { value?: typeof indicators } }>(
+        help.primaryTabId,
+        "Runtime.evaluate",
+        {
+          expression: `(() => { const text = (document.body?.innerText || "").toLowerCase(); return {
+            login: !!document.querySelector('input[type="password"], input[autocomplete="username"], input[autocomplete="current-password"]') || /\\b(sign in|log in|login)\\b/.test(text),
+            upload: !!document.querySelector('input[type="file"]') || /\\bupload\\b/.test(text),
+            success: /\\b(success|successful|complete|completed|submitted|verified|dashboard)\\b/.test(text)
+          }; })()`,
+          returnByValue: true,
+        },
+      );
+      if (response.result?.value) indicators = response.result.value;
+    } catch { /* best effort */ }
+  }
+  return {
+    url: tab.url ?? "",
+    tabs: tabSummary,
+    dom_signature: fingerprint(dom),
+    accessibility_signature: fingerprint(accessibility),
+    indicators,
+  };
+}
+
+function diffHelpCheckpoints(before: HelpCheckpointSummary, after: HelpCheckpointSummary): HelpStateDiff {
+  const url_changed = before.url !== after.url;
+  const tabs_changed = JSON.stringify(before.tabs) !== JSON.stringify(after.tabs);
+  const dom_changed = before.dom_signature !== after.dom_signature;
+  const accessibility_changed = before.accessibility_signature !== after.accessibility_signature;
+  const indicators_changed = JSON.stringify(before.indicators) !== JSON.stringify(after.indicators);
+  const changed = [
+    ...(url_changed ? ["url"] : []),
+    ...(tabs_changed ? ["tabs"] : []),
+    ...(dom_changed ? ["dom"] : []),
+    ...(accessibility_changed ? ["accessibility"] : []),
+    ...(indicators_changed ? ["indicators"] : []),
+  ];
+  return { changed, url_changed, tabs_changed, dom_changed, accessibility_changed, indicators_changed, before, after };
 }
 
 const activeHelpRequests = new Map<string, ActiveHelpRequest>();
@@ -306,6 +383,15 @@ async function finishHelp(
     const cleanup = cleanupHelp(help);
     if (waitForCleanup) await cleanup;
     else void cleanup;
+  }
+  if (!("code" in value) && value.outcome === "continued") {
+    const after = await captureHelpCheckpoint(help);
+    const state_diff = diffHelpCheckpoints(help.checkpoint, after);
+    value = {
+      ...value,
+      state_diff,
+      goal_verified: await completionCriteriaMatches(help),
+    };
   }
   help.resolve(value);
 }
@@ -680,6 +766,7 @@ export async function handleRequestHelp(
     deps,
     { scrollIntoView: true },
   );
+  const checkpoint = await captureHelpCheckpoint({ primaryTabId: tabId, deps });
 
   await deps.windows.update(target.windowId, { focused: true }).catch(() => {});
   await deps.activateTab(tabId).catch(() => {});
@@ -733,6 +820,7 @@ export async function handleRequestHelp(
       timeoutTimer,
       completionTimer: null,
       completionMatchedSince: null,
+      checkpoint,
       abortHandler: null,
     };
 
