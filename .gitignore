@@ -19,6 +19,12 @@ dist/
 evals/browser/results/
 evals/browser/agents.local.json
 
+# Local bootstrap state
+.bsk-session
+.bsk-session.tmp
+__pycache__/
+*.py[cod]
+
 # macOS
 .DS_Store
 

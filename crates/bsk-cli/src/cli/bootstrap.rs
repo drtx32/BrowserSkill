@@ -82,11 +82,6 @@ fn run(args: BootstrapArgs, format: Format) -> Result<()> {
         if std::time::Instant::now() >= deadline {
             bail!("BrowserSkill extension did not connect within {:?}", wait);
         }
-        if let Some(child) = launched.as_mut()
-            && child.try_wait()?.is_some()
-        {
-            bail!("browser executable exited before the BrowserSkill extension connected");
-        }
         std::thread::sleep(Duration::from_millis(100));
     }
 
