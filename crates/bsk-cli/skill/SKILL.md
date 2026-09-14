@@ -16,18 +16,20 @@ are explicitly borrowed.
 Do not use this skill for tasks with no browser, for extension installation, or when the user only
 wants instructions. Never extract credentials, cookies, tokens, or other secrets from pages.
 
-## Required lifecycle
+## Session lifecycle
 
-Every browser task owns a bounded session:
+Sessions are durable across task completion, agent turns, and human handoffs. Start a session when
+browser state is needed, then keep its id and reuse it for later turns:
 
 ```text
 1. bsk session start              # retain the printed 4-letter session id
 2. bsk ... --session <id>         # pass it to every session-scoped command
-3. bsk session stop <id>          # always run on success and error paths
+3. bsk session stop <id>          # only for explicit stop/reset or an unrecoverable browser failure
 ```
 
-Do not rely on the idle timeout for cleanup. Stop the session as soon as the goal is met unless the
-user explicitly asks to keep it open. Stopping also returns borrowed tabs.
+Do not stop a session merely because a task or agent turn is complete, or because control is handed
+back to a human. Stop it only when explicitly requested (including reset) or when the browser has
+terminated unrecoverably. Stopping also returns borrowed tabs.
 
 By default, browser commands auto-start the daemon when needed. Keep the shared daemon running;
 task cleanup is `bsk session stop`, not `bsk daemon stop` or `restart`.

@@ -10,8 +10,6 @@ use crate::daemon;
 pub const DEFAULT_WS_PORT: u16 = 52800;
 /// Default daemon idle timeout (10 minutes per design §3.2).
 pub const DEFAULT_DAEMON_IDLE: Duration = Duration::from_secs(10 * 60);
-/// Default session idle timeout (5 minutes per design §5).
-pub const DEFAULT_SESSION_IDLE: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, Subcommand)]
 pub enum DaemonCmd {
@@ -35,10 +33,6 @@ pub struct StartArgs {
     #[arg(long)]
     pub foreground: bool,
 
-    /// Session idle timeout, e.g. `5m`, `30s`. Default 5 minutes.
-    #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
-    pub session_idle: Option<Duration>,
-
     /// Daemon idle timeout, e.g. `10m`, `2s`. Default 10 minutes.
     #[arg(long, value_name = "DURATION", value_parser = parse_duration)]
     pub daemon_idle: Option<Duration>,
@@ -47,10 +41,6 @@ pub struct StartArgs {
 impl StartArgs {
     pub fn resolved_port(&self) -> u16 {
         self.port.unwrap_or(DEFAULT_WS_PORT)
-    }
-
-    pub fn resolved_session_idle(&self) -> Duration {
-        self.session_idle.unwrap_or(DEFAULT_SESSION_IDLE)
     }
 
     pub fn resolved_daemon_idle(&self) -> Duration {

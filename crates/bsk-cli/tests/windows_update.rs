@@ -287,8 +287,6 @@ fn automatic_update_exits_old_daemon_and_restarts_on_the_same_port() {
             "start",
             "--port",
             &port.to_string(),
-            "--session-idle",
-            "1234ms",
             "--daemon-idle",
             "30s",
         ])

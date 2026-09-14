@@ -22,19 +22,19 @@ parameters; do not guess fields. All browser work must use the injected tools di
 ownership, cancellation, attachments, observation UI, and cleanup remain intact. Do not invoke
 another process to control the browser.
 
-## Mandatory workflow
+## Session lifecycle
 
-Every task owns a bounded plugin session:
+Plugin sessions are durable across task completion, agent turns, and human handoffs:
 
 ```text
 browser_session({ action: "start", ... })
 ... use the returned sessionId for browser work ...
-browser_session({ action: "stop", session: sessionId })
+browser_session({ action: "stop", session: sessionId }) // explicit stop/reset or unrecoverable failure
 ```
 
 Pass the session explicitly when more than one exists. Never guess or reuse an id owned by another
-program. Stop in a finally-style path on success and failure unless the user explicitly asks to keep
-the session open. Stopping also returns borrowed tabs.
+program. Keep the returned sessionId for later turns; do not stop it merely because the task or
+agent turn completed or control was handed to a human. Stopping also returns borrowed tabs.
 
 ## Work toward one observable goal
 

@@ -98,8 +98,8 @@ mutation for session queueing and user-interruption gating.
   + session-scoped ref-store + borrow table.
 - **Sandbox-only**: write tools require tabs inside the Agent Window unless the tab
   was **borrowed** from the user profile.
-- **Session stop is mandatory** in agent workflows (`bsk session stop`); idle timeout
-  (default 5 min) is a safety net only.
+- **Sessions are durable** across task completion, agent turns, and human handoffs. They stop only
+  through explicit `bsk session stop`/reset or unrecoverable browser termination.
 - Multiple sessions on one browser → multiple Agent Windows, fully isolated.
 
 ### tab_list scopes

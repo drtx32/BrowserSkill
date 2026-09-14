@@ -24,7 +24,7 @@ use tokio_tungstenite::tungstenite::handshake::client::generate_key;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use support::{wait_for_browser_count, wait_for_no_sessions};
+use support::wait_for_browser_count;
 
 const TEST_EXT_ID: &str = "abcdefghijklmnopabcdefghijklmnop";
 
@@ -49,16 +49,6 @@ async fn spawn_daemon_with_connect_wait(connect_wait: Duration) -> (daemon::Daem
     let port = 0;
 
     let config = DaemonConfig::new(port).with_extension_connect_wait(connect_wait);
-    let sock = tempfile_path("bsk-test-ipc");
-    let handle = daemon::run(config, Some(sock.clone())).await.unwrap();
-    (handle, sock)
-}
-
-async fn spawn_daemon_with_session_idle(session_idle: Duration) -> (daemon::DaemonHandle, PathBuf) {
-    let port = 0;
-
-    let mut config = DaemonConfig::new(port);
-    config.session_idle = session_idle;
     let sock = tempfile_path("bsk-test-ipc");
     let handle = daemon::run(config, Some(sock.clone())).await.unwrap();
     (handle, sock)
@@ -609,8 +599,8 @@ async fn timing_out_session_stop_cancels_extension_teardown_and_keeps_session() 
 }
 
 #[tokio::test]
-async fn session_idle_timeout_stops_and_unregisters_session() {
-    let (handle, _sock) = spawn_daemon_with_session_idle(Duration::from_millis(50)).await;
+async fn session_remains_registered_without_tool_activity() {
+    let (handle, _sock) = spawn_daemon().await;
     let mut ws = connect_ext(handle.ws_addr()).await;
     let _ = handshake_as_ext(&mut ws).await;
     let state = handle.state();
@@ -623,29 +613,8 @@ async fn session_idle_timeout_stops_and_unregisters_session() {
     });
     state.tool_queues.spawn(session_id);
 
-    let request = tokio::time::timeout(Duration::from_secs(1), ws.next())
-        .await
-        .expect("idle reaper did not contact extension")
-        .expect("extension socket closed")
-        .expect("extension socket failed");
-    let Message::Text(text) = request else {
-        panic!("expected text request");
-    };
-    let request: RequestFrame = serde_json::from_str(&text).unwrap();
-    assert_eq!(request.method, Method::ToolSessionStop);
-    ws.send(Message::Text(
-        serde_json::to_string(&ResponseFrame {
-            id: request.id,
-            body: ResponseBody::Ok(
-                serde_json::to_value(bsk_protocol::tools::SessionStopResult::default()).unwrap(),
-            ),
-        })
-        .unwrap(),
-    ))
-    .await
-    .unwrap();
-
-    wait_for_no_sessions(&state).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(state.sessions.get(&session_id).is_some());
     handle.shutdown().await;
 }
 
