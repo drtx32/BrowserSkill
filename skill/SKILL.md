@@ -21,16 +21,19 @@ wants instructions. Never extract credentials, cookies, tokens, or other secrets
 Every browser task owns a bounded session:
 
 ```text
-1. bsk session start              # retain the printed 4-letter session id
-2. bsk ... --session <id>         # pass it to every session-scoped command
-3. bsk session stop <id>          # always run on success and error paths
+1. bsk bootstrap                  # reuse a connected browser, or pass --browser-executable
+2. bsk ...                        # session arguments default to `default`
+3. bsk session stop               # only when the user explicitly ends the session
 ```
 
 Do not rely on the idle timeout for cleanup. Stop the session as soon as the goal is met unless the
 user explicitly asks to keep it open. Stopping also returns borrowed tabs.
 
-By default, browser commands auto-start the daemon when needed. Keep the shared daemon running;
-task cleanup is `bsk session stop`, not `bsk daemon stop` or `restart`.
+By default, browser commands auto-start the daemon when needed. `bsk bootstrap` waits for the
+BrowserSkill extension and writes recoverable `.bsk-session` metadata under the BSK home. It never
+creates a profile or data directory and leaves an explicitly launched browser running. Keep the
+shared daemon and session running across agent turns; use `bsk session stop` only for an explicit
+reset/end request.
 
 If the agent environment kills background children when each shell command ends (as reported for
 Linux WorkBuddy), arrange a persistent daemon outside that per-command sandbox first. The user
@@ -142,7 +145,7 @@ This list of names is complete. Never invent a command outside it; read
 `bsk <command...> --help` for flags instead of guessing them.
 
 ```text
-session start|stop|list   browsers   status   doctor   update   logs
+bootstrap   session start|stop|list   browsers   status   doctor   update   logs
 navigate   navigate-back   navigate-forward   reload   wait-for-navigation   wait-ms
 observe   snapshot   get-html   screenshot   console   network
 click   hover   wheel   scroll-to   focus   blur   fill   select   press   evaluate

@@ -4,6 +4,7 @@ use std::time::Duration;
 
 mod atomic_output;
 pub mod browser_wait;
+pub mod bootstrap;
 pub mod browsers;
 pub mod business_rpc;
 pub mod console;
@@ -130,6 +131,9 @@ pub enum Command {
 
     /// List connected browsers.
     Browsers,
+
+    /// Reuse or start the configured real browser and ensure the default session.
+    Bootstrap(bootstrap::BootstrapArgs),
 
     /// Tab management commands.
     Tab(TabCmd),
