@@ -23,8 +23,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bsk_protocol::system::{
-    BrowserListParams, BrowserStatusEntry, SessionStatusEntry, StatusParams, StatusResult,
-    VersionSkewEntry,
+    BrowserListParams, BrowserStatusEntry, LogicalSessionStatus, SessionStatusEntry, StatusParams,
+    StatusResult, VersionSkewEntry,
 };
 use bsk_protocol::tools::{
     DownloadParams, DownloadResult, ReturnFailure, TransferBeginParams, TransferIdParams,
@@ -102,6 +102,11 @@ impl DaemonStatus {
             sock_path: self.sock_path.to_string_lossy().into_owned(),
             browsers: Vec::new(),
             sessions: Vec::new(),
+            logical_sessions: vec![LogicalSessionStatus {
+                name: DEFAULT_SESSION.into(),
+                physical_session_id: None,
+                active: false,
+            }],
             version_skew_browsers: Vec::new(),
         }
     }
@@ -135,6 +140,9 @@ impl DaemonStatus {
             .into_iter()
             .map(|s| s.status_entry())
             .collect();
+        let default = state
+            .logical_sessions
+            .resolve(&state.sessions, DEFAULT_SESSION);
         StatusResult {
             daemon_version: self.daemon_version.to_string(),
             protocol_version: self.protocol_version.to_string(),
@@ -144,6 +152,11 @@ impl DaemonStatus {
             sock_path: self.sock_path.to_string_lossy().into_owned(),
             browsers,
             sessions,
+            logical_sessions: vec![LogicalSessionStatus {
+                name: DEFAULT_SESSION.into(),
+                physical_session_id: default.as_ref().map(|id| id.0.clone()),
+                active: default.is_some(),
+            }],
             version_skew_browsers,
         }
     }

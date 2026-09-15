@@ -516,6 +516,7 @@ mod m2_tests {
             sock_path: "/tmp/bsk.sock".into(),
             browsers,
             sessions: Vec::new(),
+            logical_sessions: Vec::new(),
             version_skew_browsers: skew,
         }
     }

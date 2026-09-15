@@ -99,6 +99,35 @@ fn render_human(s: &StatusResult) {
     for (key, value) in &rows {
         println!("{key:<label_width$}  {value}");
     }
+    for browser in &s.browsers {
+        println!(
+            "browser {}  {} {}  ext {}  sessions {}{}",
+            browser.instance_id,
+            browser.browser_name,
+            browser.browser_version,
+            browser.extension_version,
+            browser.session_count,
+            if browser.version_skew { "  (protocol skew)" } else { "" }
+        );
+    }
+    for logical in &s.logical_sessions {
+        println!(
+            "session {}  physical {}  {}",
+            logical.name,
+            logical.physical_session_id.as_deref().unwrap_or("-"),
+            if logical.active { "active" } else { "inactive" }
+        );
+    }
+    for session in &s.sessions {
+        let window = session
+            .agent_window_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "-".into());
+        println!(
+            "  window {}  session {}  browser {}",
+            window, session.session_id, session.browser_instance_id
+        );
+    }
 }
 
 fn render_json(s: &StatusResult) -> anyhow::Result<()> {

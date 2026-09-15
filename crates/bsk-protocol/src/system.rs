@@ -533,6 +533,16 @@ pub struct SessionStatusEntry {
     pub created_at_ms: i64,
 }
 
+/// A stable agent-facing session alias and the physical session currently
+/// backing it.  Keeping this mapping in the status response makes recovery
+/// diagnostics explainable without exposing physical ids as the primary API.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct LogicalSessionStatus {
+    pub name: String,
+    pub physical_session_id: Option<String>,
+    pub active: bool,
+}
+
 /// `system.status` request payload.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct StatusParams {
@@ -592,6 +602,9 @@ pub struct StatusResult {
     pub browsers: Vec<BrowserStatusEntry>,
     /// Snapshot of live sessions.
     pub sessions: Vec<SessionStatusEntry>,
+    /// Stable logical aliases and their current physical bindings.
+    #[serde(default)]
+    pub logical_sessions: Vec<LogicalSessionStatus>,
     /// Subset of `browsers` whose `protocol_version` differs from the
     /// daemon's (minor drift, same major). Entries mirror
     /// `BrowserStatusEntry.version_skew`.
