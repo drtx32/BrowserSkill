@@ -238,3 +238,7 @@ exports may not persist between shell calls. Keep browser commands sandboxed.
 A missing daemon needs host-side startup, not repeated auto-start, guessed home
 paths, deleted runtime files or a shared-daemon restart. A local process identity
 warning permits browser commands when IPC works.
+
+## Structured locators
+
+When locator support is available in the connected host, prefer field-scoped VOM matching such as `role=link href~/resume/i region=header`. Matching is deterministic and AND-composed; use normalized geometry fields for layout, and use discover only to rank compact candidates. Never act on an ambiguous stale-ref rematch. CSS selectors are an explicit low-level fallback.

@@ -87,6 +87,10 @@ unknown effects or switch backends to bypass limits. Borrow confirmation still a
 Arbitrary page-script evaluation and interaction recording are intentionally unsupported.
 Do not invent tools or bypass these limits.
 
+## Structured locators
+
+Where locator support is available, prefer field-scoped VOM matching such as `role=link href~/resume/i region=header`. Matching is deterministic and AND-composed; normalized geometry fields express layout, and discover is limited to ranking compact candidates. Never act on an ambiguous stale-ref rematch. CSS selectors remain an explicit low-level fallback.
+
 ## Canvas and continuation
 
 `@eN canvas [visual:screenshot]` is text, not an image. Screenshot the ref when needed; never infer

@@ -238,3 +238,7 @@ exports may not persist between shell calls. Keep browser commands sandboxed.
 A missing daemon needs host-side startup, not repeated auto-start, guessed home
 paths, deleted runtime files or a shared-daemon restart. A local process identity
 warning permits browser commands when IPC works.
+
+## Structured locators
+
+When a host exposes the VOM locator API, prefer structured matching over parsing rendered observation text. Examples include `role=link href~/resume|profile/i region=header`, `role=button name~=submit`, and `role=link xnorm>0.7 ynorm<0.15`. Predicates are ANDed and regex is field-scoped. Use semantic discover only to rank bounded candidates, and act only on a unique high-confidence result. CSS is a low-level escape hatch. A stale ref may be recovered only from a unique fingerprint match; surface ambiguous candidates and observe again before interaction.
