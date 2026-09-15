@@ -26,3 +26,21 @@ export type {
   VomProjectionNode,
   VomRelation,
 } from "./types";
+export {
+  discoverLocators,
+  findLocators,
+  matchesLocator,
+  parseLocator,
+  rematchLocator,
+} from "./locator";
+export type {
+  DiscoverResult,
+  LocatorField,
+  LocatorMatch,
+  LocatorNode,
+  LocatorOperator,
+  LocatorPredicate,
+  LocatorQuery,
+  LocatorValue,
+  RematchResult,
+} from "./locator";
