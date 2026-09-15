@@ -128,6 +128,11 @@ pub fn record_recovery_path() -> Result<PathBuf> {
     Ok(bsk_home()?.join("record-recovery.json"))
 }
 
+/// Recoverable mapping for the stable logical `default` session.
+pub fn current_session_path() -> Result<PathBuf> {
+    Ok(bsk_home()?.join("current-session.json"))
+}
+
 /// Windows named-pipe name. Include the resolved `BSK_HOME` path in the
 /// token so test homes and custom installs do not share a predictable
 /// per-username pipe.
@@ -218,6 +223,10 @@ mod tests {
             assert_eq!(
                 record_recovery_path().unwrap(),
                 home.join("record-recovery.json")
+            );
+            assert_eq!(
+                current_session_path().unwrap(),
+                home.join("current-session.json")
             );
         });
     }

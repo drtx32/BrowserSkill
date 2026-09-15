@@ -18,13 +18,17 @@ wants instructions. Never extract credentials, cookies, tokens, or other secrets
 
 ## Session lifecycle
 
-Sessions are durable across task completion, agent turns, and human handoffs. Start a session when
-browser state is needed, then keep its id and reuse it for later turns:
+Sessions are durable across task completion, agent turns, and human handoffs. Every browser task
+uses the stable logical `default` session unless it explicitly selects another session:
 
 ```text
-1. bsk session start              # retain the printed 4-letter session id
-2. bsk ... --session <id>         # pass it to every session-scoped command
-3. bsk session stop <id>          # only for explicit stop/reset or an unrecoverable browser failure
+1. bsk session start              # optional; establishes or reuses the default session
+2. bsk ...                        # session arguments default to `default`
+3. bsk session stop               # only for explicit stop/reset or unrecoverable browser failure
+
+The daemon resolves `default` to the current physical session and stores
+recoverable metadata in the user BSK state directory. Physical ids are not
+durable agent-facing identifiers.
 ```
 
 Do not stop a session merely because a task or agent turn is complete, or because control is handed

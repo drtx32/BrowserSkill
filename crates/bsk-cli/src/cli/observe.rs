@@ -18,7 +18,7 @@ pub struct ObserveArgs {
     #[arg(long, conflicts_with_all = ["max_depth", "probe_hover", "debug_surfaces"])]
     pub cursor: Option<String>,
     /// Session id (must be active).
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// Target tab. Defaults to the Agent Window's active tab.

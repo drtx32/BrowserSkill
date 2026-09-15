@@ -28,7 +28,7 @@ fn is_off_value(value: Option<&str>) -> bool {
 
 #[derive(Debug, Clone, Args)]
 pub struct RequestHelpArgs {
-    #[arg(long)]
+    #[arg(long, default_value = "default")]
     pub session: String,
 
     /// Message shown to the user explaining what they need to do.
