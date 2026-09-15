@@ -28,6 +28,8 @@ export interface ConnectionLifecycleHooks {
   beforeDisconnect?: () => void | Promise<void>;
   /** Best-effort teardown after an unexpected transport loss. */
   onDisconnected?: () => void | Promise<void>;
+  /** Re-advertise local sessions after a successful handshake. */
+  onConnected?: () => void | Promise<void>;
 }
 
 /**
@@ -229,6 +231,7 @@ export class ConnectionController {
       this.clearHandshakeRetry();
       this.lastError = null;
       this.setState(verdict.kind);
+      await this.lifecycleHooks.onConnected?.();
     } catch (err) {
       if (generation !== this.connectionGeneration || signal.aborted || isAbortError(err)) return;
       this.handshake = null;

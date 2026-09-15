@@ -45,7 +45,7 @@ Once connected, run the existing commands on the server:
 
 ```sh
 bsk status
-bsk session start
+bsk bootstrap
 ```
 
 With multiple paired browsers, select the browser using the existing `--browser` option. Each device receives its own stable browser identity; it cannot select another device's identity through its handshake.
@@ -112,7 +112,7 @@ Remote content reads, screenshots, recording and page operations require a tab e
 
 This also applies to tabs or windows opened by a page through `target="_blank"`, `window.open`, or an OAuth flow. An opener relationship does not grant control. If such a tab is already inside the Agent Window, it cannot be borrowed in place: the browser user must first move it to a regular browser window, then the Agent can use the ordinary borrow flow. Tabs explicitly created through `bsk tab create` are controlled immediately. Automatic popup authorization is outside this version's scope.
 
-Disconnecting cancels task work, returns borrowed tabs and closes task-created tabs. User-created tabs survive cleanup. Failed returns preserve the window and must be resolved before reconnecting. Reconnection starts new tasks; commands and sessions are never replayed. Failed remote authentication does not select a local connection automatically.
+Disconnecting cancels controller work but preserves the browser, Agent Windows, tabs and page state, including unsaved content. Reconnection rebinds the existing session when the browser remains alive; commands are not replayed. Only an explicit session stop/reset/close or unrecoverable browser termination is destructive. Failed remote authentication does not select a local connection automatically.
 
 Remote upload and download are unsupported in this version and return the `unsupported` error. Existing local file transfer behavior is unchanged. Screenshots and other existing RPC content results remain supported. There is no gateway preview or focus side protocol, background task tab group, or alternative window model.
 

@@ -310,18 +310,9 @@ pub(super) async fn drive_connection<S: tokio::io::AsyncRead + tokio::io::AsyncW
         || params.instance_id.clone(),
         |auth| auth.device.browser_id.clone(),
     ));
-    // A fresh socket represents a fresh extension control plane. The
-    // extension tears down its local sessions before reconnecting, so any
-    // daemon-side sessions left under the same instance id are stale. Purge
-    // them before replacing the browser registration; otherwise an old WS
-    // cleanup racing with this handshake can preserve rows that no longer
-    // have an Agent Window on the extension side.
-    for session in state.sessions.purge_browser(&browser_id) {
-        state.tool_queues.remove(&session.id);
-        state.session_interrupts.drop_session(&session.id);
-        state.transfers.release_session(&session.id.0);
-        debug!(session = %session.id, "purged stale session before browser reconnect");
-    }
+    // Reconnecting the same browser must not invalidate its persistent
+    // Agent Windows. The extension sends session.activity after handshake to
+    // rebind sessions that survived a daemon restart.
     let (tx, mut rx) = mpsc::unbounded_channel::<Frame>();
     let generation = super::browsers::next_browser_generation();
     let connected_at_ms = std::time::SystemTime::now()
@@ -437,22 +428,19 @@ pub(super) async fn drive_connection<S: tokio::io::AsyncRead + tokio::io::AsyncW
             tokio::time::timeout(Duration::from_secs(1), writer.send(Message::Close(None))).await;
     }
 
-    // Cleanup: drop browser + purge its sessions, but only if the
-    // registry still holds *this* generation. If a reconnect already
-    // took over under the same `instance_id` we leave the new entry
-    // and its (possibly fresh) sessions alone.
+    // Cleanup drops only the transport registration. Sessions remain
+    // recoverable until the browser liveness reaper proves the browser is
+    // gone, or the user explicitly closes/stops a session.
     if state
         .browsers
         .remove_if_generation_matches(&browser_id, generation)
         .is_some()
     {
-        info!(id = %browser_id, generation, "browser disconnected");
-        for s in state.sessions.purge_browser(&browser_id) {
-            state.tool_queues.remove(&s.id);
-            state.session_interrupts.drop_session(&s.id);
-            state.transfers.release_session(&s.id.0);
-            debug!(session = %s.id, "purged session on browser disconnect");
-        }
+        info!(
+            id = %browser_id,
+            generation,
+            "browser disconnected; preserving sessions for reconnect"
+        );
     } else {
         info!(
             id = %browser_id,
@@ -501,6 +489,9 @@ async fn handle_inbound_text(state: &Arc<DaemonState>, client: &Arc<BrowserClien
                     );
                 }
             }
+            bsk_protocol::EventKind::SessionActivity => {
+                handle_session_activity(state, &client.id, &ev.payload);
+            }
             bsk_protocol::EventKind::SessionWindowClosed => {
                 handle_session_window_closed(state, &client.id, &ev.payload);
             }
@@ -524,6 +515,36 @@ async fn handle_inbound_text(state: &Arc<DaemonState>, client: &Arc<BrowserClien
             let _ = client
                 .sink
                 .send(Frame::Response(ResponseFrame { id: req.id, body }));
+        }
+    }
+}
+
+fn handle_session_activity(
+    state: &DaemonState,
+    browser: &BrowserId,
+    payload: &serde_json::Value,
+) {
+    #[derive(serde::Deserialize)]
+    struct Activity {
+        session_id: String,
+        agent_window_id: i64,
+        #[serde(default)]
+        created_at_ms: i64,
+    }
+    let activities = payload
+        .get("sessions")
+        .cloned()
+        .and_then(|value| serde_json::from_value::<Vec<Activity>>(value).ok())
+        .unwrap_or_default();
+    for activity in activities {
+        let id = super::sessions::SessionId(activity.session_id);
+        if state.sessions.rebind(
+            id.clone(),
+            browser.clone(),
+            activity.agent_window_id,
+            activity.created_at_ms,
+        ) {
+            state.tool_queues.spawn(id);
         }
     }
 }

@@ -116,7 +116,7 @@ mutation for session queueing and user-interruption gating.
 | --- | --- |
 | Same session | Daemon serializes RPCs (ref-store safety) |
 | Different sessions | Parallel |
-| Multiple browsers | `bsk session start --browser <id>` when >1 extension connected |
+| Multiple browsers | `bsk bootstrap --browser <id>` when >1 extension connected |
 
 ## Module dependency graph
 

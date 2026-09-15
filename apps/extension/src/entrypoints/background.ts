@@ -416,9 +416,19 @@ export default defineBackground(() => {
         );
       }
     };
+    const rebindSessions = () => {
+      const sessionBindings = sessions.list().map((ctx) => ({
+        session_id: ctx.sessionId,
+        agent_window_id: ctx.agentWindowId,
+        created_at_ms: ctx.createdAtMs,
+      }));
+      if (sessionBindings.length === 0) return;
+      transport.send({ event: "session.activity", payload: { sessions: sessionBindings } });
+    };
     await controller.attach(transport, detectBrowserMeta(), connectionEnabled, {
       beforeDisconnect: cleanup,
       onDisconnected: cleanup,
+      onConnected: rebindSessions,
     });
   })().catch((err) => {
     console.error("[browser-skill] controller failed to attach", err);

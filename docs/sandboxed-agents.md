@@ -69,7 +69,7 @@ to the next shell tool call.
 
 ```bash
 BSK_HOME=/absolute/shared/bsk BSK_AUTO_START=0 bsk doctor
-BSK_HOME=/absolute/shared/bsk BSK_AUTO_START=0 bsk session start
+BSK_HOME=/absolute/shared/bsk BSK_AUTO_START=0 bsk bootstrap
 ```
 
 Retain the session ID. In a separate shell invocation, replace `SESSION_ID`:

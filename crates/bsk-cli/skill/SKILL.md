@@ -55,12 +55,14 @@ auto-start, guess a home directory, delete runtime files, or restart the shared 
 warning about local process identity does not prevent session commands over working IPC.
 See the [sandbox setup guide](https://github.com/Tencent/BrowserSkill/blob/main/docs/sandboxed-agents.md).
 
-When multiple browsers are connected, use `bsk browsers` and start with
-`bsk session start --browser <id-or-label>`. Add `--no-focus` to that same start command when the
-Agent Window does not need to interrupt the user's current work; it is not a flag on other commands.
+When multiple browsers are connected, use `bsk browsers` and bootstrap with
+`bsk bootstrap --browser <id-or-label>`. Add `--no-focus` only when explicitly creating a new
+session with `bsk session start`; ordinary commands should keep using `default`.
 Run `bsk doctor` when startup or transport problems persist after one retry.
 
-Start tasks with `bsk session start`. The extension's saved Automation settings decide whether
+Use `bsk bootstrap` at task startup. It discovers/reuses the existing real browser and ensures the
+logical `default` session; use `bsk session start` only when an additional isolated Agent Window is
+explicitly required. The extension's saved Automation settings decide whether
 borrowing needs confirmation and human help is available; both are enabled by default. Changes apply
 to existing sessions as well as new ones. Disabling human help does not disable borrow confirmation.
 
@@ -70,6 +72,11 @@ or timeout. For unattended operation, the user chooses the corresponding setting
 `session start --json` and `session list --json` report the browser's `interaction` policy.
 Allowing human help makes `request-help` available; it does not require a handoff for every action.
 Task authorization and host approvals still apply.
+
+Task, agent-turn, idle, runtime, and transport timeouts only end controller execution or its lease.
+They must not close the browser, tabs, pages, Agent Window, or unsaved content. Reconnect/rebind
+resumes the existing session when the browser is still alive. Only an explicit `session stop`, reset,
+close, or unrecoverable browser termination is destructive.
 
 ## Work toward one observable goal
 

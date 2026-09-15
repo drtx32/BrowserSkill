@@ -115,6 +115,37 @@ impl SessionRegistry {
         sessions.insert(session_id.clone(), session);
     }
 
+    /// Re-register a session reported by an extension after daemon/socket
+    /// restart. This only restores controller metadata; it never touches the
+    /// browser window or its tabs.
+    pub fn rebind(
+        &self,
+        id: SessionId,
+        browser_id: BrowserId,
+        agent_window_id: i64,
+        created_at_ms: i64,
+    ) -> bool {
+        let mut guard = self.inner.lock().expect("session registry poisoned");
+        if let Some(session) = guard.get_mut(&id) {
+            if session.browser_id == browser_id {
+                session.agent_window_id = Some(agent_window_id);
+                return false;
+            }
+            return false;
+        }
+        guard.insert(
+            id.clone(),
+            Session {
+                interaction: None,
+                id,
+                browser_id,
+                agent_window_id: Some(agent_window_id),
+                created_at_ms,
+            },
+        );
+        true
+    }
+
     /// Reserve a fresh, collision-free [`SessionId`] under the registry
     /// lock by inserting a placeholder [`Session`]. Returns `None`
     /// after `max_attempts` failed random draws so callers can surface

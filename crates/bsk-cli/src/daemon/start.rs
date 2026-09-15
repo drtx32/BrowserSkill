@@ -26,7 +26,6 @@ use crate::daemon::{
     browsers::{BROWSER_LIVENESS_TICK, BROWSER_LIVENESS_TIMEOUT, EXTENSION_CONNECT_WAIT},
     info as daemon_info, ipc, lockfile, paths,
     probe::{self, PROBE_TIMEOUT, Probe},
-    sessions::{StopSessionError, forget_session, stop_session},
     state::{DaemonState, PROTOCOL_VERSION},
     ws,
 };
@@ -538,37 +537,13 @@ pub(crate) fn spawn_session_idle_reaper(state: Arc<DaemonState>) -> tokio::task:
             ticker.tick().await;
             let idle_ids = state.sessions.idle_ids_at(session_idle, Instant::now());
             for session_id in idle_ids {
-                match stop_session(
-                    &state.browsers,
-                    &state.sessions,
-                    &state.tool_queues,
-                    &state.session_interrupts,
-                    &session_id,
-                    Duration::from_secs(10),
-                    None,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        state.transfers.release_session(&session_id.0);
-                        info!(session = %session_id, "idle session stopped");
-                    }
-                    Err(StopSessionError::SessionBusy | StopSessionError::Stopping) => {
-                        debug!(session = %session_id, "idle session still active; retrying later");
-                    }
-                    Err(StopSessionError::NotFound | StopSessionError::BrowserGone) => {
-                        forget_session(
-                            &state.sessions,
-                            &state.tool_queues,
-                            &state.session_interrupts,
-                            &session_id,
-                        );
-                        state.transfers.release_session(&session_id.0);
-                    }
-                    Err(err) => {
-                        warn!(session = %session_id, error = %err, "failed to stop idle session");
-                    }
-                }
+                // An idle lease only expires controller ownership. It must
+                // never invoke tool.session_stop: the browser window is
+                // persistent user state and may contain unsaved content.
+                debug!(
+                    session = %session_id,
+                    "idle controller lease expired; preserving browser session"
+                );
             }
         }
     })
