@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { coverage, detectBlockingLayer } from "../layers";
+import { coverage, deriveInteractionLayers, detectBlockingLayer } from "../layers";
 import type { Viewport, VomNode } from "../types";
 
 const VP: Viewport = { width: 1000, height: 800 };
@@ -169,5 +169,119 @@ describe("detectBlockingLayer", () => {
         VP,
       ),
     ).toBeNull();
+  });
+});
+
+describe("deriveInteractionLayers", () => {
+  it("marks a nested popover active and the modal/page duplicates covered", () => {
+    const layers = deriveInteractionLayers([
+      node({ id: 1, tag: "body", rect: { x: 0, y: 0, w: 1000, h: 800 } }),
+      node({
+        id: 2,
+        parentId: 1,
+        role: "button",
+        name: "Confirm",
+        tag: "button",
+        rect: { x: 420, y: 300, w: 160, h: 40 },
+        paintOrder: 1,
+      }),
+      node({
+        id: 3,
+        parentId: 1,
+        role: "dialog",
+        modal: true,
+        rect: { x: 250, y: 150, w: 500, h: 450 },
+        position: "fixed",
+        paintOrder: 20,
+      }),
+      node({
+        id: 4,
+        parentId: 3,
+        role: "button",
+        name: "Confirm",
+        tag: "button",
+        rect: { x: 420, y: 300, w: 160, h: 40 },
+        paintOrder: 21,
+      }),
+      node({
+        id: 5,
+        parentId: 3,
+        role: "menu",
+        attrs: { popover: "auto", "popover-open": "true" },
+        rect: { x: 400, y: 280, w: 220, h: 120 },
+        position: "absolute",
+        paintOrder: 30,
+      }),
+      node({
+        id: 6,
+        parentId: 5,
+        role: "button",
+        name: "Confirm",
+        tag: "button",
+        rect: { x: 420, y: 300, w: 160, h: 40 },
+        paintOrder: 31,
+      }),
+    ]);
+    expect(layers.get(1)).toBe("covered");
+    expect(layers.get(2)).toBe("covered");
+    expect(layers.get(3)).toBe("covered");
+    expect(layers.get(4)).toBe("covered");
+    expect(layers.get(5)).toBe("active");
+    expect(layers.get(6)).toBe("active");
+  });
+
+  it("uses hit geometry and pointer events, not z-index alone, for drawers and duplicates", () => {
+    const base = node({
+      id: 1,
+      tag: "button",
+      role: "button",
+      name: "Save",
+      rect: { x: 20, y: 20, w: 100, h: 40 },
+      paintOrder: 1,
+    });
+    const layers = deriveInteractionLayers([
+      base,
+      node({
+        id: 2,
+        tag: "aside",
+        role: "dialog",
+        attrs: { "z-index": "999999" },
+        rect: { x: 500, y: 0, w: 500, h: 800 },
+        position: "fixed",
+        paintOrder: 2,
+      }),
+      node({
+        id: 3,
+        tag: "div",
+        rect: { x: 0, y: 0, w: 500, h: 800 },
+        position: "fixed",
+        pointerEvents: "none",
+        paintOrder: 99,
+      }),
+    ]);
+    expect(layers.get(1)).toBe("background");
+    expect(layers.get(2)).toBe("active");
+    expect(layers.get(3)).toBe("background");
+  });
+
+  it("returns the page to the active layer after an overlay is dismissed", () => {
+    const page = node({
+      id: 1,
+      tag: "button",
+      role: "button",
+      name: "Open",
+      rect: { x: 20, y: 20, w: 100, h: 40 },
+    });
+    expect(deriveInteractionLayers([page]).get(1)).toBe("active");
+    const overlay = node({
+      id: 2,
+      role: "dialog",
+      modal: true,
+      rect: { x: 0, y: 0, w: 1000, h: 800 },
+      position: "fixed",
+      paintOrder: 10,
+    });
+    expect(deriveInteractionLayers([page, overlay]).get(1)).toBe("covered");
+    expect(deriveInteractionLayers([page]).get(1)).toBe("active");
   });
 });

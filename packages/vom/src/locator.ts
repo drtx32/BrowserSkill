@@ -1,4 +1,4 @@
-import type { Rect, Viewport } from "./types";
+import type { InteractionLayer, Rect, Viewport } from "./types";
 
 export type LocatorValue = string | number | boolean;
 export type LocatorField =
@@ -16,7 +16,8 @@ export type LocatorField =
   | "xnorm"
   | "ynorm"
   | "wnorm"
-  | "hnorm";
+  | "hnorm"
+  | "layer";
 export type LocatorOperator =
   | "="
   | "!="
@@ -51,6 +52,7 @@ export interface LocatorNode {
   title?: string;
   region?: string;
   states?: readonly string[];
+  layer?: InteractionLayer;
   rect?: Rect | null;
   attrs?: Readonly<Record<string, string>>;
   backendNodeId?: number;
@@ -77,6 +79,7 @@ const FIELDS = new Set<LocatorField>([
   "ynorm",
   "wnorm",
   "hnorm",
+  "layer",
 ]);
 const MAX_REGEX_SOURCE = 512;
 
@@ -202,6 +205,7 @@ function fieldValue(
     return size && size > 0 ? raw / size : undefined;
   }
   if (field === "state") return node.states?.join(" ");
+  if (field === "layer") return node.layer;
   switch (field) {
     case "role":
       return node.role;

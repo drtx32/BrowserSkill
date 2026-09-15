@@ -114,3 +114,5 @@ No default token cap. With `maxTokens`, follow `nextCursor` using observe's `cur
 for remaining content. Each page replaces refs: use them before continuing, never
 reuse old ones. Continuation reads the same capture without refresh/depth changes;
 new observe/snapshot or changed page identity invalidates it.
+
+The compact VOM projection exposes an effective `layer` field (`active`, `covered`, or `background`). Prefer `layer=active` for controls on the current modal, drawer, menu, or popover. It is derived from semantic/top-layer state, paint order, visibility, geometry, and hit-test evidence—not raw CSS z-index. Re-observe after dismissal so background controls can become active again.

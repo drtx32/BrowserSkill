@@ -29,6 +29,41 @@ function coreRefs(refs: ReturnType<typeof renderVom>["refs"]) {
 }
 
 describe("renderVom single-layer page", () => {
+  it("projects effective interaction layers without serializing raw z-index", () => {
+    const projected = projectVom(
+      scene([
+        node({
+          id: 1,
+          role: "button",
+          name: "Confirm",
+          tag: "button",
+          rect: { x: 400, y: 300, w: 160, h: 40 },
+          paintOrder: 1,
+        }),
+        node({
+          id: 2,
+          role: "menu",
+          attrs: { popover: "auto", "popover-open": "true", "z-index": "999999" },
+          rect: { x: 350, y: 250, w: 260, h: 160 },
+          position: "absolute",
+          paintOrder: 10,
+        }),
+        node({
+          id: 3,
+          parentId: 2,
+          role: "button",
+          name: "Confirm",
+          tag: "button",
+          rect: { x: 400, y: 300, w: 160, h: 40 },
+          paintOrder: 11,
+        }),
+      ]),
+    );
+    expect(projected.nodes.find((item) => item.id === "n3")?.layer).toBe("active");
+    expect(projected.nodes.find((item) => item.id === "n1")?.layer).toBe("covered");
+    expect(JSON.stringify(projected)).not.toContain("999999");
+  });
+
   it("projects compact semantic facts without reparsing rendered text", () => {
     const projected = projectVom(
       scene([
@@ -40,7 +75,12 @@ describe("renderVom single-layer page", () => {
           backendNodeId: 303,
           role: "button",
           name: "Menu",
-          attrs: { "aria-expanded": "true", "aria-haspopup": "menu", "aria-controls": "menu-1", title: "Open menu" },
+          attrs: {
+            "aria-expanded": "true",
+            "aria-haspopup": "menu",
+            "aria-controls": "menu-1",
+            title: "Open menu",
+          },
           rect: { x: 10, y: 20, w: 80, h: 32 },
         }),
       ]),
@@ -67,7 +107,15 @@ describe("renderVom single-layer page", () => {
       scene([
         node({ id: 1, role: "RootWebArea", name: "Shop" }),
         node({ id: 2, parentId: 1, role: "main" }),
-        node({ id: 3, parentId: 2, backendNodeId: 9, role: "link", name: "Docs", href: "docs.example.org", rect: { x: 1, y: 2, w: 3, h: 4 } }),
+        node({
+          id: 3,
+          parentId: 2,
+          backendNodeId: 9,
+          role: "link",
+          name: "Docs",
+          href: "docs.example.org",
+          rect: { x: 1, y: 2, w: 3, h: 4 },
+        }),
       ]),
       { format: "compact" },
     );
@@ -80,7 +128,14 @@ describe("renderVom single-layer page", () => {
     const out = renderCompactVom(
       scene([
         node({ id: 1, role: "RootWebArea" }),
-        node({ id: 2, parentId: 1, role: "textbox", name: "Password", value: "secret", sensitive: true }),
+        node({
+          id: 2,
+          parentId: 1,
+          role: "textbox",
+          name: "Password",
+          value: "secret",
+          sensitive: true,
+        }),
       ]),
       { redactValues: true },
     );
@@ -92,9 +147,35 @@ describe("renderVom single-layer page", () => {
       scene([
         node({ id: 1, role: "RootWebArea", frameId: "main" }),
         node({ id: 2, parentId: 1, role: "main", name: "Background" }),
-        node({ id: 3, parentId: 2, role: "button", name: "Behind", rect: { x: 10, y: 10, w: 80, h: 30 }, paintOrder: 1, frameId: "main" }),
-        node({ id: 4, parentId: 1, role: "dialog", name: "Confirm", modal: true, position: "fixed", rect: { x: 100, y: 100, w: 500, h: 400 }, paintOrder: 10, frameId: "main" }),
-        node({ id: 5, parentId: 4, role: "button", name: "OK", rect: { x: 200, y: 400, w: 60, h: 30 }, paintOrder: 11, frameId: "main" }),
+        node({
+          id: 3,
+          parentId: 2,
+          role: "button",
+          name: "Behind",
+          rect: { x: 10, y: 10, w: 80, h: 30 },
+          paintOrder: 1,
+          frameId: "main",
+        }),
+        node({
+          id: 4,
+          parentId: 1,
+          role: "dialog",
+          name: "Confirm",
+          modal: true,
+          position: "fixed",
+          rect: { x: 100, y: 100, w: 500, h: 400 },
+          paintOrder: 10,
+          frameId: "main",
+        }),
+        node({
+          id: 5,
+          parentId: 4,
+          role: "button",
+          name: "OK",
+          rect: { x: 200, y: 400, w: 60, h: 30 },
+          paintOrder: 11,
+          frameId: "main",
+        }),
       ]),
     );
     expect(out.text).toContain("@layers 2 focus=L1");
@@ -111,7 +192,13 @@ describe("renderVom single-layer page", () => {
         node({ id: 1, role: "RootWebArea" }),
         node({ id: 2, parentId: 1, role: "main", name: "Content" }),
         node({ id: 3, parentId: 2, role: "section", name: "Panel" }),
-        node({ id: 4, parentId: 3, role: "button", name: "Action", rect: { x: 1, y: 2, w: 3, h: 4 } }),
+        node({
+          id: 4,
+          parentId: 3,
+          role: "button",
+          name: "Action",
+          rect: { x: 1, y: 2, w: 3, h: 4 },
+        }),
       ]),
       { maxDepth: 4 },
     );

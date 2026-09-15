@@ -54,6 +54,8 @@ export interface VomNode {
   inert?: boolean;
   hasNativeDescendant?: boolean;
   insideNative?: boolean;
+  /** Derived effective interaction state; never a raw CSS z-index. */
+  interactionLayer?: InteractionLayer;
 }
 
 export interface VisualEntry {
@@ -123,7 +125,10 @@ export interface VomProjectionNode {
   relations: VomRelation[];
   referenceable: boolean;
   sensitive: boolean;
+  layer: InteractionLayer;
 }
+
+export type InteractionLayer = "active" | "covered" | "background";
 
 export interface VomProjection {
   nodes: VomProjectionNode[];

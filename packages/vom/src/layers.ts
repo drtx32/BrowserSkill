@@ -1,4 +1,4 @@
-import type { BlockingLayer, Rect, Viewport, VomNode } from "./types";
+import type { BlockingLayer, InteractionLayer, Rect, Viewport, VomNode } from "./types";
 
 /** Default fraction of the viewport an overlay must cover to block. */
 export const BLOCK_COVERAGE_THRESHOLD = 0.6;
@@ -7,6 +7,7 @@ export const MASK_COVERAGE_THRESHOLD = 0.9;
 
 const POSITIONED = new Set(["fixed", "absolute", "sticky"]);
 const FORM_TAGS = new Set(["input", "textarea", "select"]);
+const FLOATING_ROLES = new Set(["menu", "menubar", "listbox", "tooltip", "tree"]);
 
 function normalizedRole(node: VomNode): string {
   return node.role?.toLowerCase() ?? "";
@@ -14,6 +15,98 @@ function normalizedRole(node: VomNode): string {
 
 function normalizedTag(node: VomNode): string {
   return node.tag.toLowerCase();
+}
+
+function visible(node: VomNode): boolean {
+  return node.pointerEvents !== "none" && node.rect !== null && node.rect.w > 0 && node.rect.h > 0;
+}
+
+function isFloatingSurface(node: VomNode): boolean {
+  const attrs = node.attrs ?? {};
+  const semantic =
+    node.modal === true ||
+    attrs["aria-modal"] === "true" ||
+    attrs.popover !== undefined ||
+    attrs["popover-open"] === "true" ||
+    attrs["data-top-layer"] === "true" ||
+    normalizedRole(node) === "dialog" ||
+    normalizedRole(node) === "alertdialog" ||
+    (POSITIONED.has(node.position) && FLOATING_ROLES.has(normalizedRole(node)));
+  return (
+    visible(node) &&
+    (semantic ||
+      (POSITIONED.has(node.position) &&
+        (normalizedRole(node) === "menu" || normalizedRole(node) === "listbox")))
+  );
+}
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return (
+    Math.min(a.x + a.w, b.x + b.w) > Math.max(a.x, b.x) &&
+    Math.min(a.y + a.h, b.y + b.h) > Math.max(a.y, b.y)
+  );
+}
+
+function containsPoint(rect: Rect, x: number, y: number): boolean {
+  return x >= rect.x && x <= rect.x + rect.w && y >= rect.y && y <= rect.y + rect.h;
+}
+
+function effectiveOrder(node: VomNode): number {
+  // Paint order is primary. z-index is only a bounded tie-breaker because it is
+  // local to stacking contexts and cannot establish global hit order.
+  const z = Number.parseInt(node.attrs?.["z-index"] ?? "", 10);
+  return (
+    node.paintOrder * 1_000_000 +
+    (Number.isFinite(z) ? Math.max(-999_999, Math.min(999_999, z)) : 0)
+  );
+}
+
+/** Derive actionable surface state from semantic/top-layer signals, paint order,
+ * visibility and geometry without exposing raw CSS z-index. */
+export function deriveInteractionLayers(
+  nodes: readonly VomNode[],
+  rootFrameId?: string,
+): Map<number, InteractionLayer> {
+  const result = new Map<number, InteractionLayer>();
+  const surfaces = nodes.filter(
+    (node) =>
+      (rootFrameId === undefined || node.frameId === rootFrameId) && isFloatingSurface(node),
+  );
+  if (surfaces.length === 0) {
+    for (const node of nodes) result.set(node.id, visible(node) ? "active" : "background");
+    return result;
+  }
+  const top = surfaces.slice().sort((a, b) => effectiveOrder(b) - effectiveOrder(a))[0];
+  const topOrder = top ? effectiveOrder(top) : -Infinity;
+  for (const node of nodes) {
+    if (!visible(node)) {
+      result.set(node.id, "background");
+      continue;
+    }
+    const insideTop =
+      top &&
+      (node.id === top.id || node.domAncestorIds?.includes(top.id) || node.parentId === top.id);
+    if (insideTop && effectiveOrder(node) >= topOrder) {
+      result.set(node.id, "active");
+      continue;
+    }
+    const rect = node.rect;
+    if (!rect) {
+      result.set(node.id, "background");
+      continue;
+    }
+    const centerX = rect.x + rect.w / 2,
+      centerY = rect.y + rect.h / 2;
+    const covered = surfaces.some(
+      (surface) =>
+        effectiveOrder(surface) > effectiveOrder(node) &&
+        surface.rect &&
+        overlaps(surface.rect, rect) &&
+        containsPoint(surface.rect, centerX, centerY),
+    );
+    result.set(node.id, covered ? "covered" : "background");
+  }
+  return result;
 }
 
 export function coverage(rect: Rect | null, vp: Viewport): number {

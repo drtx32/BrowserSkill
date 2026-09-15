@@ -33,6 +33,7 @@ export {
   parseLocator,
   rematchLocator,
 } from "./locator";
+export { deriveInteractionLayers } from "./layers";
 export type {
   DiscoverResult,
   LocatorField,
@@ -44,3 +45,4 @@ export type {
   LocatorValue,
   RematchResult,
 } from "./locator";
+export type { InteractionLayer } from "./types";

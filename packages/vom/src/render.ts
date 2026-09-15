@@ -1,4 +1,4 @@
-import { coverage, detectBlockingLayer } from "./layers";
+import { coverage, deriveInteractionLayers, detectBlockingLayer } from "./layers";
 import type {
   ActiveScopeBlock,
   BlockingLayer,
@@ -1420,7 +1420,9 @@ function compactProjectionNode(
     ...(ref ? { ref } : {}),
     ...(node.role ? { role: node.role } : {}),
     ...(cleaned(node.name) ? { name: cleaned(node.name) } : {}),
-    ...(cleaned(node.value) ? { value: node.sensitive || redactValues ? SENSITIVE_MASK : cleaned(node.value) } : {}),
+    ...(cleaned(node.value)
+      ? { value: node.sensitive || redactValues ? SENSITIVE_MASK : cleaned(node.value) }
+      : {}),
     ...(node.inputState ? { inputState: node.inputState } : {}),
     ...(node.href ? { href: node.href } : {}),
     ...(title ? { title } : {}),
@@ -1433,6 +1435,7 @@ function compactProjectionNode(
     relations,
     referenceable: isVomReferenceNode(node),
     sensitive: node.sensitive === true,
+    layer: "background",
   };
 }
 
@@ -1444,25 +1447,52 @@ function compactProjectionNode(
  */
 export function projectVom(scene: VomScene, redactValues = false): VomProjection {
   const nodes = applyVomInteractionRecovery(scene.nodes);
+  const interactionLayers = deriveInteractionLayers(nodes, scene.rootFrameId);
   const children = buildChildren(nodes);
   const result: VomProjectionNode[] = [];
-  const stack = (children.get(null) ?? []).slice().reverse().map((node) => ({ node, parentId: undefined as string | undefined, region: undefined as string | undefined, depth: 1 }));
+  const stack = (children.get(null) ?? [])
+    .slice()
+    .reverse()
+    .map((node) => ({
+      node,
+      parentId: undefined as string | undefined,
+      region: undefined as string | undefined,
+      depth: 1,
+    }));
   let nextRef = 1;
   while (stack.length > 0) {
     const item = stack.pop()!;
     const node = item.node;
     if (!shouldRender(node)) {
-      for (const child of (children.get(node.id) ?? []).slice().reverse()) stack.push({ node: child, parentId: item.parentId, region: item.region, depth: item.depth });
+      for (const child of (children.get(node.id) ?? []).slice().reverse())
+        stack.push({
+          node: child,
+          parentId: item.parentId,
+          region: item.region,
+          depth: item.depth,
+        });
       continue;
     }
     const ref = isVomReferenceNode(node) ? `e${nextRef++}` : undefined;
     const nextRegion = isVomStructuralRole(node.role) ? node.role : item.region;
-    const projected = compactProjectionNode(node, ref, item.parentId ? `n${item.parentId}` : undefined, nextRegion, redactValues);
+    const projected = compactProjectionNode(
+      node,
+      ref,
+      item.parentId ? `n${item.parentId}` : undefined,
+      nextRegion,
+      redactValues,
+    );
+    projected.layer = node.interactionLayer ?? interactionLayers.get(node.id) ?? "background";
     projected.depth = item.depth;
     result.push(projected);
     if (ref && shouldSkipRedundantRefChildren(node)) continue;
     for (const child of (children.get(node.id) ?? []).slice().reverse()) {
-      stack.push({ node: child, parentId: node.id.toString(), region: nextRegion, depth: item.depth + 1 });
+      stack.push({
+        node: child,
+        parentId: node.id.toString(),
+        region: nextRegion,
+        depth: item.depth + 1,
+      });
     }
   }
   return { nodes: result };
@@ -1475,11 +1505,14 @@ function compactLine(node: VomProjectionNode, depth: number, surface?: CondSurfa
   if (node.title) line += ` ^${JSON.stringify(node.title)}`;
   if (node.region) line += ` region=${node.region}`;
   if (node.inputState) line += ` [${node.inputState}]`;
-  if (node.value !== undefined) line += ` =${JSON.stringify(node.sensitive ? SENSITIVE_MASK : node.value)}`;
+  if (node.value !== undefined)
+    line += ` =${JSON.stringify(node.sensitive ? SENSITIVE_MASK : node.value)}`;
   for (const state of node.states) line += ` !${state}`;
-  for (const relation of node.relations) line += ` ${relation.kind}=#${relation.target.replace(/^#/, "")}`;
+  for (const relation of node.relations)
+    line += ` ${relation.kind}=#${relation.target.replace(/^#/, "")}`;
   if (surface?.subItems.length) {
-    const action = surface.triggerAction === "hover" ? "hover first" : `${surface.triggerAction} first`;
+    const action =
+      surface.triggerAction === "hover" ? "hover first" : `${surface.triggerAction} first`;
     line += ` [${action}: ${surface.subItems.slice(0, MAX_SURFACE_ITEMS).join(" | ")}${surface.subItems.length > MAX_SURFACE_ITEMS ? " | …" : ""}]`;
   }
   if (node.ref || node.states.includes("modal") || node.role === "dialog") {
@@ -1494,7 +1527,12 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
   const normalizedScene = { ...scene, nodes };
   const layer = detectBlockingLayer(nodes, scene.viewport, scene.rootFrameId);
   let projectedScene = normalizedScene;
-  let header = ["@vom 2", `@view ${scene.viewport.width}x${scene.viewport.height}`, "@layers 1 focus=L1", "L1 page"];
+  let header = [
+    "@vom 2",
+    `@view ${scene.viewport.width}x${scene.viewport.height}`,
+    "@layers 1 focus=L1",
+    "L1 page",
+  ];
   let hiddenCount = 0;
   if (layer) {
     const included = collectDescendants(nodes, layer.members);
@@ -1532,7 +1570,14 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
     lines.push(line);
     tokens = nextTokens;
     if (node.ref) {
-      refs.push({ ref: node.ref, backendNodeId: node.backendNodeId ?? Number(node.id.slice(1)), ...(node.frameId ? { frameId: node.frameId } : {}), ...(node.role ? { role: node.role } : {}), ...(node.name ? { name: node.name } : {}), line: lines.length - 1 });
+      refs.push({
+        ref: node.ref,
+        backendNodeId: node.backendNodeId ?? Number(node.id.slice(1)),
+        ...(node.frameId ? { frameId: node.frameId } : {}),
+        ...(node.role ? { role: node.role } : {}),
+        ...(node.name ? { name: node.name } : {}),
+        line: lines.length - 1,
+      });
     }
   }
   if (layer) lines.push(`L2 page … occluded by L1 (~${hiddenCount} nodes, not actionable)`);

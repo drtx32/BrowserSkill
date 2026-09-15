@@ -331,3 +331,5 @@ details.
 ## Structured locators
 
 When a host exposes the VOM locator API, prefer structured matching over parsing rendered observation text. Examples include `role=link href~/resume|profile/i region=header`, `role=button name~=submit`, and `role=link xnorm>0.7 ynorm<0.15`. Predicates are ANDed and regex is field-scoped. Use semantic discover only to rank bounded candidates, and act only on a unique high-confidence result. CSS is a low-level escape hatch. A stale ref may be recovered only from a unique fingerprint match; surface ambiguous candidates and observe again before interaction.
+
+The compact projection also exposes an effective `layer` field (`active`, `covered`, or `background`). Prefer `layer=active` when querying controls on a modal, drawer, menu, or popover. This is derived from browser top-layer/semantic state, paint order, visibility, geometry, and hit-test evidence; it is not a portable raw z-index. After dismissing a surface, observe again so the page layer can become active.

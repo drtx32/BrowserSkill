@@ -75,4 +75,19 @@ describe("locator DSL", () => {
     });
     expect(rematchLocator(nodes, "role=link region=header").status).toBe("ambiguous");
   });
+
+  it("queries the derived active interaction layer", () => {
+    expect(
+      matchesLocator(
+        { role: "button", name: "Confirm", layer: "active" },
+        "role=button layer=active",
+      ),
+    ).toBe(true);
+    expect(
+      matchesLocator(
+        { role: "button", name: "Confirm", layer: "covered" },
+        "role=button layer=active",
+      ),
+    ).toBe(false);
+  });
 });
