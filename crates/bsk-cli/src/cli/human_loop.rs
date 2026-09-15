@@ -85,6 +85,20 @@ pub fn dispatch(args: RequestHelpArgs, format: Format) -> Result<(), CliError> {
     if legacy_help_override_requested() {
         crate::cli::interaction_policy::warn_legacy_override("BSK_REQUEST_HELP=off");
     }
+    // Disabled (`BSK_REQUEST_HELP=off`): return a synthetic `disabled`
+    // result immediately — no daemon startup, no overlay, no waiting.
+    if request_help_disabled() {
+        let result = RequestHelpResult {
+            outcome: HelpOutcome::Disabled,
+            completed_by: None,
+            note: Some(REQUEST_HELP_DISABLED_NOTE.into()),
+            tab_id: args.tab_id.unwrap_or(0),
+            resolved_targets: None,
+            state_diff: None,
+            goal_verified: None,
+        };
+        return render(&result, format);
+    }
     let info = ensure_daemon().context("ensure daemon is running")?;
     crate::cli::interaction_policy::require_help_support(&info.sock_path)?;
     let targets: Vec<HelpTarget> = args.target.iter().map(|t| parse_target(t)).collect();
