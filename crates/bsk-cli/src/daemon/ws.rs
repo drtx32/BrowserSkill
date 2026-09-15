@@ -658,6 +658,10 @@ fn handle_session_window_closed(
         &state.session_interrupts,
         &session_id,
     ) {
+        // Agent-Window close removes the session before returning, so use the
+        // verified sender/browser identity captured above to release only this
+        // session's lease. The persistent browser and its page state remain.
+        let _ = state.leases.release(&sender.0, &session_id.0, None);
         state.transfers.release_session(&session_id.0);
         info!(session = %session_id, "session removed: user closed Agent Window");
     } else {
@@ -902,12 +906,17 @@ mod session_user_interrupt_tests {
             .sessions
             .reserve_id(owner.clone(), 8, || 0)
             .expect("reserved session id");
+        state.leases.acquire(&owner.0, &sid.0, Some(5_000)).unwrap();
 
         handle_session_window_closed(&state, &owner, &serde_json::json!({"session_id": sid.0}));
 
         assert!(
             state.sessions.get(&sid).is_none(),
             "owning browser may close its own session"
+        );
+        assert!(
+            state.leases.acquire(&owner.0, "reconnected-session", Some(5_000)).is_ok(),
+            "Agent-Window close must release the closed session lease"
         );
     }
 

@@ -508,6 +508,10 @@ pub(crate) fn spawn_browser_liveness_reaper(
                         "reaping unresponsive browser (no heartbeat within liveness window)"
                     );
                     for s in state.sessions.purge_browser(&client.id) {
+                        // The session owner is the lease owner. Release it
+                        // while purging the session so a reconnect can acquire
+                        // control immediately; this never closes the browser.
+                        let _ = state.leases.release(&client.id.0, &s.id.0, None);
                         state.tool_queues.remove(&s.id);
                         state.session_interrupts.drop_session(&s.id);
                         state.transfers.release_session(&s.id.0);

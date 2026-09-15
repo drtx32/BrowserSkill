@@ -75,6 +75,7 @@ async fn reaper_drops_silent_heartbeat_browser_and_purges_its_sessions() {
 
     state.browsers.insert(fake_client("hb", true, 10));
     state.sessions.insert(fake_session("sess", "hb"));
+    state.leases.acquire("hb", "sess", Some(5_000)).unwrap();
     assert_eq!(state.browsers.len(), 1);
     assert_eq!(state.sessions.count_for_browser(&BrowserId("hb".into())), 1);
 
@@ -89,6 +90,10 @@ async fn reaper_drops_silent_heartbeat_browser_and_purges_its_sessions() {
     assert!(
         wait_until(|| state.sessions.is_empty(), Duration::from_secs(1)).await,
         "reaping a browser must purge its sessions"
+    );
+    assert!(
+        state.leases.acquire("hb", "reconnected-session", Some(5_000)).is_ok(),
+        "reaping a browser must release its old session lease for reconnect"
     );
 
     handle.shutdown().await;
