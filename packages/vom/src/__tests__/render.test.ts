@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderVom } from "../render";
+import { projectVom, renderCompactVom, renderVom } from "../render";
 import type { VomNode, VomScene } from "../types";
 
 function node(p: Partial<VomNode> & { id: number }): VomNode {
@@ -29,6 +29,96 @@ function coreRefs(refs: ReturnType<typeof renderVom>["refs"]) {
 }
 
 describe("renderVom single-layer page", () => {
+  it("projects compact semantic facts without reparsing rendered text", () => {
+    const projected = projectVom(
+      scene([
+        node({ id: 1, role: "RootWebArea", name: "Profile" }),
+        node({ id: 2, parentId: 1, role: "main", name: "Account" }),
+        node({
+          id: 3,
+          parentId: 2,
+          backendNodeId: 303,
+          role: "button",
+          name: "Menu",
+          attrs: { "aria-expanded": "true", "aria-haspopup": "menu", "aria-controls": "menu-1", title: "Open menu" },
+          rect: { x: 10, y: 20, w: 80, h: 32 },
+        }),
+      ]),
+    );
+    expect(projected.nodes.at(-1)).toMatchObject({
+      id: "n3",
+      ref: "e1",
+      backendNodeId: 303,
+      role: "button",
+      name: "Menu",
+      title: "Open menu",
+      rect: { x: 10, y: 20, w: 80, h: 32 },
+      states: ["expanded"],
+      relations: [
+        { kind: "popup", target: "menu" },
+        { kind: "controls", target: "menu-1" },
+      ],
+      region: "main",
+    });
+  });
+
+  it("renders the compact format with readable facts and synchronized refs", () => {
+    const out = renderVom(
+      scene([
+        node({ id: 1, role: "RootWebArea", name: "Shop" }),
+        node({ id: 2, parentId: 1, role: "main" }),
+        node({ id: 3, parentId: 2, backendNodeId: 9, role: "link", name: "Docs", href: "docs.example.org", rect: { x: 1, y: 2, w: 3, h: 4 } }),
+      ]),
+      { format: "compact" },
+    );
+    expect(out.text).toContain("@vom 2");
+    expect(out.text).toContain('@e1 link "Docs" ->"docs.example.org" region=main [1,2,3,4]');
+    expect(out.refs).toEqual([expect.objectContaining({ ref: "e1", backendNodeId: 9, line: 6 })]);
+  });
+
+  it("redacts compact projected values", () => {
+    const out = renderCompactVom(
+      scene([
+        node({ id: 1, role: "RootWebArea" }),
+        node({ id: 2, parentId: 1, role: "textbox", name: "Password", value: "secret", sensitive: true }),
+      ]),
+      { redactValues: true },
+    );
+    expect(out.text).not.toContain("secret");
+  });
+
+  it("mirrors legacy modal occlusion semantics in compact output", () => {
+    const out = renderCompactVom(
+      scene([
+        node({ id: 1, role: "RootWebArea", frameId: "main" }),
+        node({ id: 2, parentId: 1, role: "main", name: "Background" }),
+        node({ id: 3, parentId: 2, role: "button", name: "Behind", rect: { x: 10, y: 10, w: 80, h: 30 }, paintOrder: 1, frameId: "main" }),
+        node({ id: 4, parentId: 1, role: "dialog", name: "Confirm", modal: true, position: "fixed", rect: { x: 100, y: 100, w: 500, h: 400 }, paintOrder: 10, frameId: "main" }),
+        node({ id: 5, parentId: 4, role: "button", name: "OK", rect: { x: 200, y: 400, w: 60, h: 30 }, paintOrder: 11, frameId: "main" }),
+      ]),
+    );
+    expect(out.text).toContain("@layers 2 focus=L1");
+    expect(out.text).toContain("L1 modal");
+    expect(out.text).toContain('dialog "Confirm" region=dialog !modal');
+    expect(out.text).toContain('button "OK"');
+    expect(out.text).not.toContain("Behind");
+    expect(out.text).toContain("L2 page");
+  });
+
+  it("uses the local node id when a ref has no backend node id and preserves depth", () => {
+    const out = renderCompactVom(
+      scene([
+        node({ id: 1, role: "RootWebArea" }),
+        node({ id: 2, parentId: 1, role: "main", name: "Content" }),
+        node({ id: 3, parentId: 2, role: "section", name: "Panel" }),
+        node({ id: 4, parentId: 3, role: "button", name: "Action", rect: { x: 1, y: 2, w: 3, h: 4 } }),
+      ]),
+      { maxDepth: 4 },
+    );
+    expect(out.refs[0]).toMatchObject({ backendNodeId: 4 });
+    expect(out.text).toContain('      @e1 button "Action" region=section [1,2,3,4]');
+  });
+
   it("does not derive handle context across frame scopes", () => {
     const out = renderVom(
       scene([

@@ -81,6 +81,8 @@ export interface VomScene {
 }
 
 export interface VomOptions {
+  /** Select the agent-facing renderer; legacy remains the compatibility default. */
+  format?: "legacy" | "compact";
   maxDepth?: number;
   maxTokens?: number;
   /**
@@ -93,6 +95,38 @@ export interface VomOptions {
    * public layer header format.
    */
   activeRegionPolicy?: boolean;
+}
+
+export interface VomRelation {
+  kind: "popup" | "controls" | "describedby" | "owns" | "labelledby";
+  target: string;
+}
+
+/** Stable, queryable projection shared by compact rendering and future matchers. */
+export interface VomProjectionNode {
+  id: string;
+  backendNodeId?: number;
+  depth: number;
+  ref?: string;
+  role?: string;
+  name?: string;
+  value?: string;
+  inputState?: VomNode["inputState"];
+  href?: string;
+  title?: string;
+  rect?: Rect;
+  frameId?: string;
+  contextScopeId?: string;
+  parentId?: string;
+  region?: string;
+  states: string[];
+  relations: VomRelation[];
+  referenceable: boolean;
+  sensitive: boolean;
+}
+
+export interface VomProjection {
+  nodes: VomProjectionNode[];
 }
 
 export interface CondSurface {

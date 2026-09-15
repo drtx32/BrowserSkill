@@ -5,6 +5,8 @@ export {
   prepareObservationRender,
   type RenderRow,
   renderVom,
+  renderCompactVom,
+  projectVom,
 } from "./render";
 export type {
   ActiveScopeBlock,
@@ -20,4 +22,7 @@ export type {
   VomRef,
   VomResult,
   VomScene,
+  VomProjection,
+  VomProjectionNode,
+  VomRelation,
 } from "./types";

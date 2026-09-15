@@ -9,6 +9,9 @@ import type {
   VomOptions,
   VomResult,
   VomScene,
+  VomProjection,
+  VomProjectionNode,
+  VomRelation,
 } from "./types";
 
 const SKIP_ROLES = new Set(["generic", "none", "presentation", "inlinetextbox"]);
@@ -1175,6 +1178,7 @@ function renderDoubleLayer(scene: VomScene, layer: BlockingLayer, options: VomOp
 }
 
 export function renderVom(scene: VomScene, options: VomOptions = {}): VomResult {
+  if (options.format === "compact") return renderCompactVom(scene, options);
   const nodes = applyVomInteractionRecovery(scene.nodes);
   const renderScene = { ...scene, nodes };
   const layer = detectBlockingLayer(nodes, scene.viewport, scene.rootFrameId);
@@ -1355,4 +1359,182 @@ export function prepareObservationRender(
       };
   }
   return { headers, rows: rows(), truncated: () => state.truncated };
+}
+
+const COMPACT_RELATIONS = [
+  ["aria-haspopup", "popup"],
+  ["aria-controls", "controls"],
+  ["aria-describedby", "describedby"],
+  ["aria-owns", "owns"],
+  ["aria-labelledby", "labelledby"],
+] as const satisfies ReadonlyArray<readonly [string, VomRelation["kind"]]>;
+
+const COMPACT_BOOLEAN_STATES = [
+  ["disabled", "disabled"],
+  ["aria-disabled", "disabled"],
+  ["aria-checked", "checked"],
+  ["aria-selected", "selected"],
+  ["aria-expanded", "expanded"],
+  ["aria-pressed", "pressed"],
+  ["aria-current", "current"],
+  ["aria-required", "required"],
+  ["aria-invalid", "invalid"],
+  ["aria-busy", "busy"],
+] as const;
+
+function compactState(node: VomNode, attr: string, label: string): string | undefined {
+  const value = attr === "disabled" ? node.disabled : node.attrs?.[attr];
+  if (value === undefined || value === false) return undefined;
+  if (value === true || value === "true" || value === "1" || value === "yes") return label;
+  if (attr === "aria-checked" || attr === "aria-selected" || attr === "aria-expanded") {
+    return `${label}=${value}`;
+  }
+  return undefined;
+}
+
+function compactProjectionNode(
+  node: VomNode,
+  ref: string | undefined,
+  parentId: string | undefined,
+  region: string | undefined,
+  redactValues = false,
+): VomProjectionNode {
+  const attrs = node.attrs ?? {};
+  const relations: VomRelation[] = [];
+  for (const [attr, kind] of COMPACT_RELATIONS) {
+    const raw = attrs[attr];
+    if (!raw) continue;
+    for (const target of raw.split(/\s+/).filter(Boolean)) relations.push({ kind, target });
+  }
+  const states = COMPACT_BOOLEAN_STATES.flatMap(([attr, label]) => {
+    const state = compactState(node, attr, label);
+    return state ? [state] : [];
+  });
+  if (node.inert) states.push("inert");
+  if (node.modal) states.push("modal");
+  const title = cleaned(attrs.title);
+  return {
+    id: `n${node.id}`,
+    ...(node.backendNodeId !== undefined ? { backendNodeId: node.backendNodeId } : {}),
+    depth: 0,
+    ...(ref ? { ref } : {}),
+    ...(node.role ? { role: node.role } : {}),
+    ...(cleaned(node.name) ? { name: cleaned(node.name) } : {}),
+    ...(cleaned(node.value) ? { value: node.sensitive || redactValues ? SENSITIVE_MASK : cleaned(node.value) } : {}),
+    ...(node.inputState ? { inputState: node.inputState } : {}),
+    ...(node.href ? { href: node.href } : {}),
+    ...(title ? { title } : {}),
+    ...(node.rect ? { rect: node.rect } : {}),
+    ...(node.frameId ? { frameId: node.frameId } : {}),
+    ...(node.contextScopeId ? { contextScopeId: node.contextScopeId } : {}),
+    ...(parentId ? { parentId } : {}),
+    ...(region ? { region } : {}),
+    states,
+    relations,
+    referenceable: isVomReferenceNode(node),
+    sensitive: node.sensitive === true,
+  };
+}
+
+/**
+ * Projects the rich scene into the stable, queryable surface intended for
+ * matching. This deliberately shares the same node filtering and ref rules as
+ * the legacy renderer, so a compact observation cannot address a different
+ * element than an ordinary observation.
+ */
+export function projectVom(scene: VomScene, redactValues = false): VomProjection {
+  const nodes = applyVomInteractionRecovery(scene.nodes);
+  const children = buildChildren(nodes);
+  const result: VomProjectionNode[] = [];
+  const stack = (children.get(null) ?? []).slice().reverse().map((node) => ({ node, parentId: undefined as string | undefined, region: undefined as string | undefined, depth: 1 }));
+  let nextRef = 1;
+  while (stack.length > 0) {
+    const item = stack.pop()!;
+    const node = item.node;
+    if (!shouldRender(node)) {
+      for (const child of (children.get(node.id) ?? []).slice().reverse()) stack.push({ node: child, parentId: item.parentId, region: item.region, depth: item.depth });
+      continue;
+    }
+    const ref = isVomReferenceNode(node) ? `e${nextRef++}` : undefined;
+    const nextRegion = isVomStructuralRole(node.role) ? node.role : item.region;
+    const projected = compactProjectionNode(node, ref, item.parentId ? `n${item.parentId}` : undefined, nextRegion, redactValues);
+    projected.depth = item.depth;
+    result.push(projected);
+    if (ref && shouldSkipRedundantRefChildren(node)) continue;
+    for (const child of (children.get(node.id) ?? []).slice().reverse()) {
+      stack.push({ node: child, parentId: node.id.toString(), region: nextRegion, depth: item.depth + 1 });
+    }
+  }
+  return { nodes: result };
+}
+
+function compactLine(node: VomProjectionNode, depth: number, surface?: CondSurface): string {
+  let line = `${"  ".repeat(depth)}${node.ref ? `@${node.ref} ` : ""}${node.role ?? "node"}`;
+  if (node.name) line += ` ${JSON.stringify(node.name)}`;
+  if (node.href) line += ` ->${JSON.stringify(node.href)}`;
+  if (node.title) line += ` ^${JSON.stringify(node.title)}`;
+  if (node.region) line += ` region=${node.region}`;
+  if (node.inputState) line += ` [${node.inputState}]`;
+  if (node.value !== undefined) line += ` =${JSON.stringify(node.sensitive ? SENSITIVE_MASK : node.value)}`;
+  for (const state of node.states) line += ` !${state}`;
+  for (const relation of node.relations) line += ` ${relation.kind}=#${relation.target.replace(/^#/, "")}`;
+  if (surface?.subItems.length) {
+    const action = surface.triggerAction === "hover" ? "hover first" : `${surface.triggerAction} first`;
+    line += ` [${action}: ${surface.subItems.slice(0, MAX_SURFACE_ITEMS).join(" | ")}${surface.subItems.length > MAX_SURFACE_ITEMS ? " | …" : ""}]`;
+  }
+  if (node.ref || node.states.includes("modal") || node.role === "dialog") {
+    if (node.rect) line += ` [${node.rect.x},${node.rect.y},${node.rect.w},${node.rect.h}]`;
+  }
+  return line;
+}
+
+/** Render the compact projection without changing the established renderer. */
+export function renderCompactVom(scene: VomScene, options: VomOptions = {}): VomResult {
+  const nodes = applyVomInteractionRecovery(scene.nodes);
+  const normalizedScene = { ...scene, nodes };
+  const layer = detectBlockingLayer(nodes, scene.viewport, scene.rootFrameId);
+  let projectedScene = normalizedScene;
+  let header = ["@vom 2", `@view ${scene.viewport.width}x${scene.viewport.height}`, "@layers 1 focus=L1", "L1 page"];
+  let hiddenCount = 0;
+  if (layer) {
+    const included = collectDescendants(nodes, layer.members);
+    projectedScene = { ...normalizedScene, nodes: nodes.filter((node) => included.has(node.id)) };
+    hiddenCount = countRenderable(nodes.filter((node) => !included.has(node.id)));
+    header = [
+      "@vom 2",
+      `@view ${scene.viewport.width}x${scene.viewport.height}`,
+      "@layers 2 focus=L1",
+      `L1 ${layer.kind} cover=${Math.round(layer.coverage * 100)}%`,
+    ];
+  } else if (options.activeRegionPolicy) {
+    projectedScene = { ...normalizedScene, nodes: applyActiveRegionPolicy(nodes, scene) };
+  }
+  const projection = projectVom(projectedScene, options.redactValues === true);
+  const lines = [...header];
+  const refs: RenderedRef[] = [];
+  const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
+  let tokens = estimateTokens(lines.join("\n"));
+  let truncated = false;
+  for (const node of projection.nodes) {
+    const depth = node.depth;
+    if (options.maxDepth !== undefined && depth > options.maxDepth) {
+      truncated = true;
+      continue;
+    }
+    const sourceId = Number(node.id.slice(1));
+    const surface = scene.surfaces?.find((candidate) => candidate.triggerId === sourceId);
+    const line = compactLine(node, depth, surface);
+    const nextTokens = tokens + estimateTokens(line);
+    if (nextTokens > maxTokens) {
+      truncated = true;
+      break;
+    }
+    lines.push(line);
+    tokens = nextTokens;
+    if (node.ref) {
+      refs.push({ ref: node.ref, backendNodeId: node.backendNodeId ?? Number(node.id.slice(1)), ...(node.frameId ? { frameId: node.frameId } : {}), ...(node.role ? { role: node.role } : {}), ...(node.name ? { name: node.name } : {}), line: lines.length - 1 });
+    }
+  }
+  if (layer) lines.push(`L2 page … occluded by L1 (~${hiddenCount} nodes, not actionable)`);
+  return { text: lines.join("\n"), refs, truncated };
 }
