@@ -528,6 +528,45 @@ impl AuditStore {
                 "pending_operations": pending_operations, "error": inner.last_error.get(browser)}))
     }
 
+    /// Return a compact, bounded view for an agent resuming a logical session.
+    /// Raw inputs, page bodies and screenshots never enter this surface.
+    pub fn history(&self, browser: &str, session_id: &str, limit: usize) -> Result<Value> {
+        let mut inner = self.inner.lock().unwrap();
+        self.load(&mut inner)?;
+        self.prune(&mut inner, now_ms())?;
+        let mut runs: Vec<_> = inner
+            .runs
+            .values()
+            .filter(|run| run.browser_id == browser && run.session_id == session_id)
+            .cloned()
+            .collect();
+        runs.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then(b.id.cmp(&a.id)));
+        let mut events = Vec::new();
+        for run in &runs {
+            let mut run_events = read_events(&self.path(&run.id)?)?;
+            events.extend(run_events.drain(..).map(|event| {
+                json!({
+                    "at": event.at,
+                    "kind": event.kind,
+                    "operation_id": event.operation_id,
+                    "data": event.data,
+                })
+            }));
+        }
+        events.sort_by(|a, b| b["at"].as_i64().cmp(&a["at"].as_i64()));
+        let total = events.len();
+        let limit = limit.clamp(1, 50);
+        events.truncate(limit);
+        Ok(json!({
+            "session_id": session_id,
+            "browser_instance_id": browser,
+            "events": events,
+            "total": total,
+            "has_more": total > limit,
+            "latest_run": runs.first(),
+        }))
+    }
+
     pub fn delete(&self, browser: &str, id: &str) -> Result<Value> {
         let mut inner = self.inner.lock().unwrap();
         self.load(&mut inner)?;
@@ -869,6 +908,27 @@ mod tests {
         assert_eq!(detail["run"]["status"], "interrupted");
         assert_eq!(detail["run"]["operations"], 1);
         assert_eq!(detail["events"].as_array().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn agent_history_is_bounded_redacted_and_includes_recovery_markers() {
+        let (_temp, store, session) = fixture();
+        store.configure("browser-a", true).unwrap();
+        store.session_started(&session);
+        for _ in 0..4 {
+            let ticket = store
+                .begin("abcd", &Method::ToolNavigate, &json!({"url":"https://example.com/private"}))
+                .unwrap()
+                .unwrap();
+            store.finish(ticket, &ResponseBody::Ok(json!({"tab_id": 1})));
+        }
+        store.marker("abcd", "recovery");
+        let history = store.history("browser-a", "abcd", 3).unwrap();
+        assert_eq!(history["events"].as_array().unwrap().len(), 3);
+        assert_eq!(history["has_more"], true);
+        assert!(history["events"].as_array().unwrap().iter().any(|e| e["kind"] == "recovery"));
+        let raw = fs::read_to_string(store.path(&run_id(&store)).unwrap()).unwrap();
+        assert!(!raw.contains("private"));
     }
 
     #[test]

@@ -258,6 +258,10 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Err(e) => ResponseBody::Err(e),
                 },
                 Method::SessionList => handle_session_list(&state),
+                Method::SessionHistory => match handle_session_history(&state, params).await {
+                    Ok(v) => ResponseBody::Ok(v),
+                    Err(e) => ResponseBody::Err(e),
+                },
                 Method::BrowserList => match handle_browser_list(&state, params).await {
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
@@ -1351,6 +1355,21 @@ async fn handle_browser_list(state: &Arc<DaemonState>, params: Value) -> Result<
     // (review I1).
     let browsers = snapshot_status_entries(&state.browsers, &state.sessions);
     Ok(serde_json::to_value(BrowserListResult { browsers }).unwrap_or(Value::Null))
+}
+
+async fn handle_session_history(state: &Arc<DaemonState>, params: Value) -> Result<Value, RpcError> {
+    let session_name = params.get("session_id").and_then(Value::as_str).unwrap_or(DEFAULT_SESSION);
+    let session_id = state
+        .logical_sessions
+        .resolve(&state.sessions, session_name)
+        .ok_or_else(|| invalid_params("session is not active or has no recoverable history"))?;
+    let session = state.sessions.get(&session_id).ok_or_else(|| invalid_params("session is not active"))?;
+    let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(20).min(50) as usize;
+    state.audit.history(&session.browser_id.0, &session_id.0, limit).map_err(|error| RpcError {
+        code: ErrorCode::ProtocolError,
+        message: format!("could not read session history: {error}"),
+        data: None,
+    })
 }
 
 // ----- Test-helper IpcServer wrapper around the transport layer -----

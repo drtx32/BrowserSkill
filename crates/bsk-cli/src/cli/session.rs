@@ -47,6 +47,18 @@ pub enum SessionSub {
     Stop(SessionStopArgs),
     /// List active sessions.
     List,
+    /// Show the bounded, redacted history for a live logical session.
+    History(SessionHistoryArgs),
+}
+
+#[derive(Debug, Clone, Args)]
+pub struct SessionHistoryArgs {
+    /// Session id or logical alias.
+    #[arg(value_name = "SESSION_ID", default_value = "default")]
+    pub session_id: String,
+    /// Maximum number of recent events to return (1..=50).
+    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=50))]
+    pub limit: u32,
 }
 
 #[derive(Debug, Clone, Args)]
@@ -171,6 +183,7 @@ pub fn dispatch(cmd: SessionCmd, format: Format) -> Result<(), CliError> {
         }
         SessionSub::Stop(args) => run_stop(info.sock_path, args, format),
         SessionSub::List => run_list(info.sock_path, format),
+        SessionSub::History(args) => run_history(info.sock_path, args, format),
     }
 }
 
@@ -534,6 +547,25 @@ fn run_list(sock: PathBuf, format: Format) -> Result<(), CliError> {
                     "{:<session_w$}  {:<browser_w$}  {}",
                     s.session_id, s.browser_instance_id, window,
                 );
+            }
+        }
+    }
+    Ok(())
+}
+
+fn run_history(sock: PathBuf, args: SessionHistoryArgs, format: Format) -> Result<(), CliError> {
+    #[derive(Serialize)]
+    struct Params { session_id: String, limit: u32 }
+    let reply: serde_json::Value = call(sock, Method::SessionHistory, Some(Params { session_id: args.session_id, limit: args.limit }), Duration::from_secs(5))?;
+    match format {
+        Format::Json => println!("{}", serde_json::to_string_pretty(&reply).map_err(|e| CliError::Local(anyhow::anyhow!(e)))?),
+        Format::Human => {
+            let events = reply.get("events").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+            if events.is_empty() { println!("(no session history)"); }
+            for event in events {
+                let at = event.get("at").and_then(|v| v.as_i64()).unwrap_or_default();
+                let kind = event.get("kind").and_then(|v| v.as_str()).unwrap_or("unknown");
+                println!("{at}  {kind}");
             }
         }
     }

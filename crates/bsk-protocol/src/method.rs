@@ -39,6 +39,8 @@ pub enum Method {
     SessionStopAll,
     #[serde(rename = "session.list")]
     SessionList,
+    #[serde(rename = "session.history")]
+    SessionHistory,
 
     #[serde(rename = "browser.list")]
     BrowserList,
@@ -225,6 +227,7 @@ impl Method {
             | Method::SessionStop
             | Method::SessionStopAll
             | Method::SessionList
+            | Method::SessionHistory
             | Method::ToolSessionStart
             | Method::ToolSessionStop => MethodEffect::ControlPlane,
 

@@ -15,6 +15,23 @@ advice-only tasks. Never extract credentials, cookies, tokens, or other secrets.
 
 ## Task workflow
 
+Use `bsk bootstrap` at task startup to reuse the connected real browser and
+ensure the stable logical `default` session. Keep that session across agent
+turns and human handoffs; use `bsk session stop` only for an explicit reset/end
+request or an unrecoverable browser failure. This workflow reuses the existing
+browser profile and must not introduce profile or `data_dir` management.
+
+When resuming work, `bsk session history --json --limit 20` returns a bounded,
+redacted history of recent navigation/actions, transfers, help requests and
+handoff/recovery markers. Use it to avoid repeating completed actions; it does
+not replace a fresh `observe` before interacting.
+
+Task, agent-turn, idle, runtime, and transport timeouts only end controller
+execution or its lease; timeouts only end controller execution or its lease and
+must not close the browser, tabs, pages, Agent Window, or unsaved content.
+unsaved content. Reconnect/rebind resumes the existing session when the browser
+is still alive.
+
 1. Define success from the user's request. Start `bsk session start --json` and
    retain its `session_id`. With multiple browsers, run `bsk browsers` and add
    `--browser <id-or-label>` to start. For background work, add `--no-focus` to

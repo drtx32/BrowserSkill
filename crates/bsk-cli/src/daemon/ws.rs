@@ -544,6 +544,7 @@ fn handle_session_activity(
             activity.agent_window_id,
             activity.created_at_ms,
         ) {
+            state.audit.marker(&id.0, "reconnected");
             state.tool_queues.spawn(id);
         }
     }
