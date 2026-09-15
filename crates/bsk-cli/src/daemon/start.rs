@@ -26,6 +26,7 @@ use crate::daemon::{
     browsers::{BROWSER_LIVENESS_TICK, BROWSER_LIVENESS_TIMEOUT, EXTENSION_CONNECT_WAIT},
     info as daemon_info, ipc, lockfile, paths,
     probe::{self, PROBE_TIMEOUT, Probe},
+    sessions::{StopSessionError, forget_session, stop_session},
     state::{DaemonState, PROTOCOL_VERSION},
     ws,
 };
@@ -43,7 +44,9 @@ pub(crate) const DAEMON_REPLACEMENT_WAIT_ENV: &str = "BSK_DAEMON_REPLACES_PID";
 /// Concrete daemon configuration resolved from CLI flags / defaults.
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
+    pub server: Option<super::remote::ServerConfig>,
     pub ws_port: u16,
+    pub session_idle: Duration,
     pub daemon_idle: Duration,
     /// Skip the Origin allow-list (tests / `--insecure-origin`).
     pub allow_any_origin: bool,
@@ -59,12 +62,14 @@ pub struct DaemonConfig {
 }
 
 impl DaemonConfig {
-    /// Test/embed helper: a minimal config locked to `port` with a
-    /// generous daemon idle timeout. Used by integration tests that spin up
+    /// Test/embed helper: a minimal config locked to `port` with
+    /// generous idle timeouts. Used by integration tests that spin up
     /// a daemon via [`super::run`].
     pub fn new(port: u16) -> Self {
         Self {
+            server: None,
             ws_port: port,
+            session_idle: Duration::from_secs(60 * 5),
             daemon_idle: Duration::from_secs(60 * 30),
             allow_any_origin: false,
             extension_connect_wait: EXTENSION_CONNECT_WAIT,
@@ -76,6 +81,12 @@ impl DaemonConfig {
     pub fn with_extension_connect_wait(mut self, wait: Duration) -> Self {
         self.extension_connect_wait = wait;
         self
+    }
+
+    pub fn listen_ip(&self) -> IpAddr {
+        self.server
+            .as_ref()
+            .map_or(IpAddr::V4(Ipv4Addr::LOCALHOST), |server| server.listen)
     }
 
     /// Override the liveness reaper's silence threshold and scan cadence.
@@ -91,7 +102,9 @@ impl DaemonConfig {
 impl From<&StartArgs> for DaemonConfig {
     fn from(args: &StartArgs) -> Self {
         Self {
+            server: None,
             ws_port: args.resolved_port(),
+            session_idle: args.resolved_session_idle(),
             daemon_idle: args.resolved_daemon_idle(),
             allow_any_origin: false,
             extension_connect_wait: EXTENSION_CONNECT_WAIT,
@@ -103,9 +116,10 @@ impl From<&StartArgs> for DaemonConfig {
 
 /// `bsk daemon start` entrypoint.
 pub fn run_start(args: StartArgs) -> Result<()> {
-    let cfg = DaemonConfig::from(&args);
+    let mut cfg = DaemonConfig::from(&args);
+    cfg.server = args.server_config()?;
 
-    if args.foreground {
+    if args.foreground || cfg.server.is_some() {
         return run_foreground(cfg);
     }
 
@@ -267,6 +281,7 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
             .transfers
             .initialize()
             .context("initialize transfer staging")?;
+        let session_idle_task = spawn_session_idle_reaper(Arc::clone(&state));
         let browser_liveness_task = spawn_browser_liveness_reaper(Arc::clone(&state));
         // Fired by the update check task after a successful auto-update:
         // the replacement daemon (or Windows update helper) is ready, so
@@ -274,7 +289,7 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
         let restart_notify = Arc::new(tokio::sync::Notify::new());
         let update_check_task =
             spawn_update_check_task(Arc::clone(&state), Arc::clone(&restart_notify));
-        let ws_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), cfg.ws_port);
+        let ws_addr = SocketAddr::new(cfg.listen_ip(), cfg.ws_port);
         let ws_handle = ws::WsServer::new(Arc::clone(&state))
             .bind(ws_addr)
             .await
@@ -385,6 +400,9 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
             let state = Arc::clone(&state);
             let daemon_idle = cfg.daemon_idle;
             tokio::spawn(async move {
+                if state.config.server.is_some() {
+                    return std::future::pending::<Option<()>>().await;
+                }
                 let tick = (daemon_idle / 4).max(Duration::from_millis(250));
                 let mut ticker = tokio::time::interval(tick);
                 ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -436,6 +454,8 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
 
         let _ = ipc_shutdown_tx.send(());
         let _ = ipc_task.await;
+        session_idle_task.abort();
+        let _ = session_idle_task.await;
         browser_liveness_task.abort();
         let _ = browser_liveness_task.await;
         update_check_task.abort();
@@ -500,6 +520,60 @@ pub(crate) fn spawn_browser_liveness_reaper(
     })
 }
 
+/// Spawn the cooperative session-idle reaper shared by the production
+/// foreground daemon and the test/embed daemon entry point.
+pub(crate) fn spawn_session_idle_reaper(state: Arc<DaemonState>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let session_idle = state.config.session_idle;
+        let tick = (session_idle / 4)
+            .max(Duration::from_millis(100))
+            .min(Duration::from_secs(30));
+        let mut ticker = tokio::time::interval(tick);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        // `interval`'s first tick is immediate. Consume it so a zero/very
+        // short test setting still gets one real inactivity window.
+        ticker.tick().await;
+
+        loop {
+            ticker.tick().await;
+            let idle_ids = state.sessions.idle_ids_at(session_idle, Instant::now());
+            for session_id in idle_ids {
+                match stop_session(
+                    &state.browsers,
+                    &state.sessions,
+                    &state.tool_queues,
+                    &state.session_interrupts,
+                    &session_id,
+                    Duration::from_secs(10),
+                    None,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        state.transfers.release_session(&session_id.0);
+                        info!(session = %session_id, "idle session stopped");
+                    }
+                    Err(StopSessionError::SessionBusy | StopSessionError::Stopping) => {
+                        debug!(session = %session_id, "idle session still active; retrying later");
+                    }
+                    Err(StopSessionError::NotFound | StopSessionError::BrowserGone) => {
+                        forget_session(
+                            &state.sessions,
+                            &state.tool_queues,
+                            &state.session_interrupts,
+                            &session_id,
+                        );
+                        state.transfers.release_session(&session_id.0);
+                    }
+                    Err(err) => {
+                        warn!(session = %session_id, error = %err, "failed to stop idle session");
+                    }
+                }
+            }
+        }
+    })
+}
+
 /// Spawn the periodic update check owned by the production daemon.
 ///
 /// The daemon is the only writer of `~/.bsk/update-check.json`; CLI
@@ -533,6 +607,11 @@ pub(crate) fn spawn_update_check_task(
     use crate::cli::update;
 
     tokio::spawn(async move {
+        // Server processes are supervised by the deployment. Do not replace
+        // them with an automatically spawned local-mode daemon.
+        if state.config.server.is_some() {
+            return;
+        }
         let cache_path = match paths::update_check_path() {
             Ok(path) => path,
             Err(err) => {
@@ -593,7 +672,7 @@ pub(crate) fn spawn_update_check_task(
                             update::self_install_candidate(
                                 candidate,
                                 target,
-                                &restart_start_args(&state.config),
+                                &restart_start_args(&state.config)?,
                             )
                         },
                     )
@@ -638,8 +717,9 @@ pub(crate) fn spawn_update_check_task(
                     // `exe_path` is always Some here: the install only
                     // runs when it was captured.
                     if let Some(exe) = &exe_path {
-                        let args = restart_start_args(&state.config);
-                        match spawn_detached_at(exe, &args, Some(std::process::id())) {
+                        match restart_start_args(&state.config).and_then(|args| {
+                            spawn_detached_at(exe, &args, Some(std::process::id()))
+                        }) {
                             Ok(()) => {
                                 info!(
                                     pid = std::process::id(),
@@ -661,13 +741,19 @@ pub(crate) fn spawn_update_check_task(
 }
 
 /// Rebuild the `StartArgs` for the replacement daemon from the running
-/// config so the respawn keeps the same port and daemon idle timeout.
-fn restart_start_args(cfg: &DaemonConfig) -> StartArgs {
-    StartArgs {
+/// config so the respawn keeps the same port and idle timeouts.
+fn restart_start_args(cfg: &DaemonConfig) -> Result<StartArgs> {
+    anyhow::ensure!(
+        cfg.server.is_none(),
+        "server restart is managed by the deployment supervisor"
+    );
+    Ok(StartArgs {
         port: Some(cfg.ws_port),
         foreground: false,
+        session_idle: Some(cfg.session_idle),
         daemon_idle: Some(cfg.daemon_idle),
-    }
+        ..Default::default()
+    })
 }
 
 #[derive(Debug)]
@@ -925,6 +1011,9 @@ fn apply_start_args(cmd: &mut std::process::Command, args: &StartArgs) {
     if let Some(p) = args.port {
         cmd.arg("--port").arg(p.to_string());
     }
+    if let Some(d) = args.session_idle {
+        cmd.arg("--session-idle").arg(format_duration(d));
+    }
     if let Some(d) = args.daemon_idle {
         cmd.arg("--daemon-idle").arg(format_duration(d));
     }
@@ -949,9 +1038,9 @@ fn validate_existing_start(args: &StartArgs, status: &StatusResult) -> Result<()
             status.ws_port
         ));
     }
-    if args.daemon_idle.is_some() {
+    if args.session_idle.is_some() || args.daemon_idle.is_some() {
         return Err(anyhow::anyhow!(
-            "daemon already running; use `bsk daemon restart` to apply daemon idle timeout changes"
+            "daemon already running; use `bsk daemon restart` to apply idle timeout changes"
         ));
     }
     Ok(())
@@ -1049,13 +1138,28 @@ mod tests {
     fn restart_start_args_preserve_the_running_config() {
         let cfg = DaemonConfig {
             ws_port: 1234,
+            session_idle: Duration::from_secs(11),
             daemon_idle: Duration::from_secs(22),
             ..DaemonConfig::new(0)
         };
-        let args = restart_start_args(&cfg);
+        let args = restart_start_args(&cfg).unwrap();
         assert_eq!(args.port, Some(1234));
         assert!(!args.foreground);
+        assert_eq!(args.session_idle, Some(Duration::from_secs(11)));
         assert_eq!(args.daemon_idle, Some(Duration::from_secs(22)));
+    }
+
+    #[test]
+    fn automatic_restart_rejects_server_configuration() {
+        let mut cfg = DaemonConfig::new(0);
+        cfg.server = StartArgs {
+            mode: crate::cli::daemon::DaemonMode::Server,
+            public_url: Some("wss://browser.example/extension".into()),
+            ..Default::default()
+        }
+        .server_config()
+        .unwrap();
+        assert!(restart_start_args(&cfg).is_err());
     }
 
     #[test]
