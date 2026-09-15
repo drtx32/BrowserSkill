@@ -108,6 +108,7 @@ impl DaemonStatus {
                 active: false,
             }],
             version_skew_browsers: Vec::new(),
+            leases: Vec::new(),
         }
     }
 
@@ -158,6 +159,7 @@ impl DaemonStatus {
                 active: default.is_some(),
             }],
             version_skew_browsers,
+            leases: state.leases.status_all(),
         }
     }
 }
@@ -275,6 +277,9 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
                 },
+                Method::LeaseAcquire | Method::LeaseRenew | Method::LeaseRelease | Method::LeaseStatus => {
+                    handle_lease(&state, method, params)
+                }
                 Method::BrowserList => match handle_browser_list(&state, params).await {
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
@@ -375,6 +380,14 @@ async fn resolve_default_session(
         )
         .await
         .map_err(map_start_error)?;
+        if state.leases.acquire(&session.browser_id.0, &session.id.0, None).is_err() {
+            let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+            return Err(RpcError {
+                code: ErrorCode::PermissionDenied,
+                message: "browser is already controlled by another active session".into(),
+                data: Some(serde_json::to_value(state.leases.status(&session.browser_id.0)).unwrap_or(Value::Null)),
+            });
+        }
         state
             .logical_sessions
             .set_default(&session.id)
@@ -433,6 +446,21 @@ async fn handle_tool_dispatch(
             });
         }
     };
+    if method.requires_control_lease()
+        && let Some(session) = state.sessions.get(&session_id)
+        && let Err(holder) = state.leases.require(&session.browser_id.0, &session_id.0)
+    {
+        return ResponseBody::Err(RpcError {
+            code: ErrorCode::PermissionDenied,
+            message: "browser control lease is not held by this session; observe is still available".into(),
+            data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
+        });
+    }
+    if method.requires_control_lease()
+        && let Some(session) = state.sessions.get(&session_id)
+    {
+        state.leases.touch(&session.browser_id.0, &session_id.0);
+    }
     // Reject before allocating local transfer resources. The extension also
     // enforces this for third-party gateways backed by a local-mode daemon.
     if state.config.server.is_some() && matches!(method, Method::ToolUpload | Method::ToolDownload)
@@ -1079,6 +1107,14 @@ async fn handle_session_start(
     .await
     {
         Ok(session) => {
+            if let Err(crate::daemon::lease::AcquireError::Held(holder)) = state.leases.acquire(&session.browser_id.0, &session.id.0, None) {
+                let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+                return Err(RpcError {
+                    code: ErrorCode::PermissionDenied,
+                    message: "browser is already controlled by another active session".into(),
+                    data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
+                });
+            }
             if let Err(error) = state.logical_sessions.set_default(&session.id) {
                 warn!(%error, "could not persist current logical session");
             }
@@ -1183,6 +1219,7 @@ async fn handle_session_stop(
             });
         }
     };
+    let browser_id = state.sessions.get(&session_id).map(|session| session.browser_id.0);
     match stop_session(
         &state.browsers,
         &state.sessions,
@@ -1192,9 +1229,12 @@ async fn handle_session_stop(
         DEFAULT_SESSION_STOP_TIMEOUT,
         Some(cancel),
     )
-    .await
+        .await
     {
         Ok(stop) => {
+            if let Some(browser_id) = browser_id.as_deref() {
+                let _ = state.leases.release(browser_id, &session_id.0, None);
+            }
             state.logical_sessions.clear_if(&session_id);
             state.transfers.release_session(&session_id.0);
             let result = CliSessionStopResult {
@@ -1284,6 +1324,7 @@ async fn handle_session_stop_all(
                 data: None,
             });
         }
+        let browser_id = state.sessions.get(&id).map(|session| session.browser_id.0);
         match stop_session(
             &state.browsers,
             &state.sessions,
@@ -1296,6 +1337,9 @@ async fn handle_session_stop_all(
         .await
         {
             Ok(stop) => {
+                if let Some(browser_id) = browser_id.as_deref() {
+                    let _ = state.leases.release(browser_id, &id.0, None);
+                }
                 state.logical_sessions.clear_if(&id);
                 state.transfers.release_session(&id.0);
                 stopped.push(id.0);
@@ -1346,6 +1390,41 @@ async fn handle_session_stop_all(
         return_failures,
     };
     Ok(serde_json::to_value(result).unwrap_or(Value::Null))
+}
+
+fn handle_lease(state: &Arc<DaemonState>, method: Method, params: Value) -> ResponseBody {
+    let browser = params.get("browser_instance_id").and_then(Value::as_str).unwrap_or("");
+    let owner = params.get("owner").and_then(Value::as_str).unwrap_or("");
+    if browser.is_empty() || (owner.is_empty() && method != Method::LeaseStatus) {
+        return ResponseBody::Err(invalid_params("lease requires browser_instance_id and owner"));
+    }
+    let ttl = params.get("ttl_ms").and_then(Value::as_u64);
+    match method {
+        Method::LeaseAcquire => match state.leases.acquire(browser, owner, ttl) {
+            Ok(status) => ResponseBody::Ok(serde_json::to_value(status).unwrap_or(Value::Null)),
+            Err(crate::daemon::lease::AcquireError::Held(status)) => ResponseBody::Err(RpcError {
+                code: ErrorCode::PermissionDenied,
+                message: "browser control lease is already held".into(),
+                data: Some(serde_json::to_value(status).unwrap_or(Value::Null)),
+            }),
+        },
+        Method::LeaseRenew => {
+            let token = params.get("token").and_then(Value::as_str).unwrap_or("");
+            match state.leases.renew(browser, owner, token, ttl) {
+                Ok(status) => ResponseBody::Ok(serde_json::to_value(status).unwrap_or(Value::Null)),
+                Err(message) => ResponseBody::Err(RpcError { code: ErrorCode::PermissionDenied, message, data: Some(serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null)) }),
+            }
+        }
+        Method::LeaseRelease => {
+            let token = params.get("token").and_then(Value::as_str);
+            match state.leases.release(browser, owner, token) {
+                Ok(()) => ResponseBody::Ok(serde_json::json!({"released": true})),
+                Err(message) => ResponseBody::Err(RpcError { code: ErrorCode::PermissionDenied, message, data: None }),
+            }
+        }
+        Method::LeaseStatus => ResponseBody::Ok(serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null)),
+        _ => ResponseBody::Err(invalid_params("not a lease method")),
+    }
 }
 
 fn handle_session_list(state: &Arc<DaemonState>) -> ResponseBody {

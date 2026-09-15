@@ -41,6 +41,14 @@ pub enum Method {
     SessionList,
     #[serde(rename = "session.history")]
     SessionHistory,
+    #[serde(rename = "lease.acquire")]
+    LeaseAcquire,
+    #[serde(rename = "lease.renew")]
+    LeaseRenew,
+    #[serde(rename = "lease.release")]
+    LeaseRelease,
+    #[serde(rename = "lease.status")]
+    LeaseStatus,
 
     #[serde(rename = "browser.list")]
     BrowserList,
@@ -228,6 +236,10 @@ impl Method {
             | Method::SessionStopAll
             | Method::SessionList
             | Method::SessionHistory
+            | Method::LeaseAcquire
+            | Method::LeaseRenew
+            | Method::LeaseRelease
+            | Method::LeaseStatus
             | Method::ToolSessionStart
             | Method::ToolSessionStop => MethodEffect::ControlPlane,
 
@@ -258,6 +270,13 @@ impl Method {
             self.effect(),
             MethodEffect::TransientInput | MethodEffect::BrowserMutation
         )
+    }
+
+    /// Browser writes and transient probes require the session's short-lived
+    /// control lease. Passive observation remains available to other agents.
+    pub fn requires_control_lease(&self) -> bool {
+        matches!(self.effect(), MethodEffect::BrowserMutation | MethodEffect::TransientInput)
+            && !matches!(self, Method::ToolObserve)
     }
 }
 
@@ -355,6 +374,14 @@ mod tests {
         assert!(Method::ToolRecordStart.is_mutating());
         assert!(Method::ToolWindowResize.is_mutating());
         assert!(Method::ToolEmulate.is_mutating());
+    }
+
+    #[test]
+    fn observation_is_read_only_but_transient_input_requires_control() {
+        assert!(!Method::ToolObserve.requires_control_lease());
+        assert!(Method::ToolHover.requires_control_lease());
+        assert!(Method::ToolClick.requires_control_lease());
+        assert!(!Method::ToolSnapshot.requires_control_lease());
     }
 
     #[test]

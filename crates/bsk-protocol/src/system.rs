@@ -564,6 +564,27 @@ pub struct LogicalSessionStatus {
     pub active: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BrowserLeaseStatus {
+    pub browser_instance_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acquired_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at_ms: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub remaining_ms: Option<u64>,
+}
+
+impl BrowserLeaseStatus {
+    pub fn free(browser_instance_id: &str) -> Self {
+        Self { browser_instance_id: browser_instance_id.into(), owner: None, token: None, acquired_at_ms: None, expires_at_ms: None, remaining_ms: None }
+    }
+}
+
 /// `system.status` request payload.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct StatusParams {
@@ -631,6 +652,8 @@ pub struct StatusResult {
     /// `BrowserStatusEntry.version_skew`.
     #[serde(default)]
     pub version_skew_browsers: Vec<VersionSkewEntry>,
+    #[serde(default)]
+    pub leases: Vec<BrowserLeaseStatus>,
 }
 
 #[cfg(test)]

@@ -188,6 +188,7 @@ fn collect_checks(state: DaemonState) -> Vec<CheckResult> {
         check_extension_connected(state.status()),
         check_browsers_protocol_compatible(state.status()),
         check_browser_diagnostics(state.status()),
+        check_browser_leases(state.status()),
     ]
 }
 
@@ -498,6 +499,17 @@ fn check_browser_diagnostics(status: Option<&StatusResult>) -> CheckResult {
     }
 }
 
+fn check_browser_leases(status: Option<&StatusResult>) -> CheckResult {
+    let name = "browser control leases";
+    let Some(status) = status else { return CheckResult::na(name, "daemon status unavailable"); };
+    let held: Vec<_> = status.leases.iter().filter_map(|lease| lease.owner.as_ref().map(|owner| format!("{} by {} ({}ms)", lease.browser_instance_id, owner, lease.remaining_ms.unwrap_or(0)))).collect();
+    if held.is_empty() {
+        CheckResult::ok(name, "no active mutation lease")
+    } else {
+        CheckResult::warn(name, held.join(", "), "inspect with `bsk status` or `bsk lease status --browser <id>`; expiry only removes mutation authority")
+    }
+}
+
 /// Highlight known URLs in repair hints for terminal output. Plain
 /// text is preserved in `--json` and in stored [`CheckResult::hint`].
 fn style_hint(hint: &str) -> String {
@@ -562,6 +574,7 @@ mod m2_tests {
             sessions: Vec::new(),
             logical_sessions: Vec::new(),
             version_skew_browsers: skew,
+            leases: Vec::new(),
         }
     }
 

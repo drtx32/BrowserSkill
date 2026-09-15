@@ -57,6 +57,7 @@ pub struct DaemonState {
     /// minted here; agent-facing RPCs use opaque transfer ids.
     pub transfers: Arc<TransferRegistry>,
     pub logical_sessions: Arc<super::logical_session::LogicalSessionStore>,
+    pub leases: Arc<super::lease::LeaseRegistry>,
 }
 
 impl DaemonState {
@@ -78,6 +79,7 @@ impl DaemonState {
         let session_interrupts = Arc::new(SessionInterruptRegistry::new());
         let transfers = Arc::new(TransferRegistry::new().expect("initialise transfer staging"));
         let logical_sessions = Arc::new(super::logical_session::LogicalSessionStore::load());
+        let leases = Arc::new(super::lease::LeaseRegistry::new());
         Self {
             audit,
             config,
@@ -89,6 +91,7 @@ impl DaemonState {
             session_interrupts,
             transfers,
             logical_sessions,
+            leases,
         }
     }
 }

@@ -128,6 +128,15 @@ fn render_human(s: &StatusResult) {
             }
         }
     }
+    for lease in &s.leases {
+        println!(
+            "lease {}  {}  owner {}  {}ms remaining",
+            lease.browser_instance_id,
+            if lease.owner.is_some() { "held" } else { "free" },
+            lease.owner.as_deref().unwrap_or("-"),
+            lease.remaining_ms.unwrap_or(0)
+        );
+    }
     for logical in &s.logical_sessions {
         println!(
             "session {}  physical {}  {}",

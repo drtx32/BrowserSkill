@@ -25,6 +25,12 @@
       "description": "Semver of the daemon binary (`env!(\"CARGO_PKG_VERSION\")`).",
       "type": "string"
     },
+    "leases": {
+      "description": "Current short-lived browser mutation leases.",
+      "default": [],
+      "type": "array",
+      "items": { "$ref": "#/definitions/BrowserLeaseStatus" }
+    },
     "pid": {
       "description": "Daemon process id.",
       "type": "integer",
@@ -68,6 +74,18 @@
     }
   },
   "definitions": {
+    "BrowserLeaseStatus": {
+      "type": "object",
+      "required": ["browser_instance_id"],
+      "properties": {
+        "browser_instance_id": { "type": "string" },
+        "owner": { "type": ["string", "null"] },
+        "token": { "type": ["string", "null"] },
+        "acquired_at_ms": { "type": ["integer", "null"], "format": "int64" },
+        "expires_at_ms": { "type": ["integer", "null"], "format": "int64" },
+        "remaining_ms": { "type": ["integer", "null"], "format": "uint64", "minimum": 0.0 }
+      }
+    },
     "BorrowConfirmationPolicy": {
       "type": "string",
       "enum": [

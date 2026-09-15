@@ -10,6 +10,7 @@ pub mod info;
 pub mod ipc;
 pub mod lockfile;
 pub mod logical_session;
+pub mod lease;
 pub mod paths;
 pub(crate) mod probe;
 pub mod queue;

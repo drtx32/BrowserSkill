@@ -32,6 +32,14 @@ must not close the browser, tabs, pages, Agent Window, or unsaved content.
 unsaved content. Reconnect/rebind resumes the existing session when the browser
 is still alive.
 
+The shared browser has one short-lived mutation lease. `session start` acquires
+it for the session; accepted mutations renew it within a bounded TTL, while
+`observe`, snapshots and other passive reads remain available to observers. Use
+`bsk lease status --browser <id>` for the current owner, `bsk lease renew` to
+extend a handoff, and `bsk lease release` before explicitly handing control to
+another agent. Expiry or a daemon/client crash releases mutation authority
+without closing the browser or changing its login/page state.
+
 1. Define success from the user's request. Start `bsk session start --json` and
    retain its `session_id`. With multiple browsers, run `bsk browsers` and add
    `--browser <id-or-label>` to start. For background work, add `--no-focus` to

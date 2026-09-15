@@ -19,6 +19,7 @@ pub mod evaluate;
 pub mod get_html;
 pub mod human_loop;
 pub mod install_skill;
+pub mod lease;
 pub mod interaction;
 pub(crate) mod interaction_policy;
 pub mod logs;
@@ -51,6 +52,7 @@ use crate::cli::evaluate::EvaluateArgs;
 use crate::cli::get_html::GetHtmlArgs;
 use crate::cli::human_loop::RequestHelpArgs;
 use crate::cli::install_skill::InstallSkillArgs;
+use crate::cli::lease::LeaseCmd;
 use crate::cli::interaction::{
     BlurArgs, ClickArgs, FillArgs, FocusArgs, HoverArgs, PressArgs, SelectArgs,
 };
@@ -129,6 +131,9 @@ pub enum Command {
 
     /// Session lifecycle.
     Session(SessionCmd),
+
+    /// Acquire, renew, release, or inspect browser control.
+    Lease(LeaseCmd),
 
     /// List connected browsers.
     Browsers,

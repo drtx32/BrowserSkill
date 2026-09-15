@@ -14,6 +14,6 @@ pub use method::Method;
 pub use system::{
     BrowserListParams, BrowserPeerInfo, BrowserStatusEntry, HandshakeCompat, HandshakeParams,
     HandshakeResult, PingParams, PingResult, SessionStatusEntry, StatusParams, StatusResult,
-    VersionSkewEntry, compare_protocol, evaluate_handshake_compat,
+    VersionSkewEntry, BrowserLeaseStatus, compare_protocol, evaluate_handshake_compat,
 };
 pub use tools::*;
