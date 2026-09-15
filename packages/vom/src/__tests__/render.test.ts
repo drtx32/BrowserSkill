@@ -178,12 +178,60 @@ describe("renderVom single-layer page", () => {
         }),
       ]),
     );
-    expect(out.text).toContain("@layers 2 focus=L1");
-    expect(out.text).toContain("L1 modal");
+    expect(out.text).toContain("@layers 2 focus=L2");
+    expect(out.text).toContain("L1 page");
+    expect(out.text).toContain("L2 modal");
     expect(out.text).toContain('dialog "Confirm" region=dialog !modal');
     expect(out.text).toContain('button "OK"');
     expect(out.text).not.toContain("Behind");
-    expect(out.text).toContain("L2 page");
+    expect(out.text).toContain("blocked action candidates retained as context-only");
+  });
+
+  it("retains covered background controls as non-action context and restores them after dismissal", () => {
+    const background = [
+      node({
+        id: 1,
+        role: "button",
+        name: "投递简历",
+        tag: "button",
+        rect: { x: 20, y: 20, w: 160, h: 40 },
+        paintOrder: 1,
+      }),
+      node({
+        id: 2,
+        role: "link",
+        name: "职位详情",
+        tag: "a",
+        rect: { x: 220, y: 20, w: 160, h: 40 },
+        paintOrder: 1,
+      }),
+    ];
+    const overlay = node({
+      id: 3,
+      role: "dialog",
+      name: "确认投递",
+      modal: true,
+      rect: { x: 0, y: 0, w: 500, h: 200 },
+      position: "fixed",
+      paintOrder: 10,
+    });
+    const foreground = node({
+      id: 4,
+      parentId: 3,
+      role: "button",
+      name: "确认投递",
+      tag: "button",
+      rect: { x: 100, y: 100, w: 160, h: 40 },
+      paintOrder: 11,
+    });
+    const blocked = renderCompactVom(scene([...background, overlay, foreground]), {
+      activeRegionPolicy: true,
+    });
+    expect(blocked.text).toContain('# @e1 button "投递简历"');
+    expect(blocked.text).toContain("[blocked by L2]");
+    expect(blocked.refs.map((ref) => ref.name)).toEqual(["确认投递"]);
+    const restored = renderCompactVom(scene(background), { activeRegionPolicy: true });
+    expect(restored.refs.map((ref) => ref.name)).toEqual(["投递简历", "职位详情"]);
   });
 
   it("uses the local node id when a ref has no backend node id and preserves depth", () => {

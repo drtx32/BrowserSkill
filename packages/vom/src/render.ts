@@ -1527,6 +1527,12 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
   const normalizedScene = { ...scene, nodes };
   const layer = detectBlockingLayer(nodes, scene.viewport, scene.rootFrameId);
   let projectedScene = normalizedScene;
+  let contextProjection: VomProjection | undefined;
+  const derivedProjection = options.activeRegionPolicy
+    ? projectVom(normalizedScene, options.redactValues === true)
+    : undefined;
+  const derivedCovered =
+    derivedProjection?.nodes.some((node) => node.layer === "covered" && node.ref) === true;
   let header = [
     "@vom 2",
     `@view ${scene.viewport.width}x${scene.viewport.height}`,
@@ -1534,25 +1540,46 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
     "L1 page",
   ];
   let hiddenCount = 0;
-  if (layer) {
-    const included = collectDescendants(nodes, layer.members);
-    projectedScene = { ...normalizedScene, nodes: nodes.filter((node) => included.has(node.id)) };
-    hiddenCount = countRenderable(nodes.filter((node) => !included.has(node.id)));
+  if (layer || derivedCovered) {
+    // Keep the complete projection only long enough to retain compact, useful
+    // blocked annotations. It is never exposed as an action map.
+    contextProjection =
+      derivedProjection ?? projectVom(normalizedScene, options.redactValues === true);
+    projectedScene = normalizedScene;
+    hiddenCount = contextProjection.nodes.filter(
+      (node) => node.layer === "covered" && node.ref,
+    ).length;
     header = [
       "@vom 2",
       `@view ${scene.viewport.width}x${scene.viewport.height}`,
-      "@layers 2 focus=L1",
-      `L1 ${layer.kind} cover=${Math.round(layer.coverage * 100)}%`,
+      "@layers 2 focus=L2",
+      "L1 page",
+      `L2 ${layer ? `${layer.kind} cover=${Math.round(layer.coverage * 100)}%` : "floating"} [active]`,
     ];
   } else if (options.activeRegionPolicy) {
     projectedScene = { ...normalizedScene, nodes: applyActiveRegionPolicy(nodes, scene) };
   }
-  const projection = projectVom(projectedScene, options.redactValues === true);
+  const projection = contextProjection
+    ? { nodes: contextProjection.nodes.filter((node) => node.layer === "active") }
+    : projectVom(projectedScene, options.redactValues === true);
   const lines = [...header];
   const refs: RenderedRef[] = [];
   const maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
   let tokens = estimateTokens(lines.join("\n"));
   let truncated = false;
+  if (contextProjection) {
+    for (const node of contextProjection.nodes) {
+      if (node.layer !== "covered" || !node.ref) continue;
+      const annotation = `  # ${compactLine(node, Math.max(1, node.depth)).trim()} [blocked by L2]`;
+      const nextTokens = tokens + estimateTokens(annotation);
+      if (nextTokens > maxTokens) {
+        truncated = true;
+        break;
+      }
+      lines.push(annotation);
+      tokens = nextTokens;
+    }
+  }
   for (const node of projection.nodes) {
     const depth = node.depth;
     if (options.maxDepth !== undefined && depth > options.maxDepth) {
@@ -1580,6 +1607,7 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
       });
     }
   }
-  if (layer) lines.push(`L2 page … occluded by L1 (~${hiddenCount} nodes, not actionable)`);
+  if (layer || derivedCovered)
+    lines.push(`… ${hiddenCount} blocked action candidates retained as context-only`);
   return { text: lines.join("\n"), refs, truncated };
 }
