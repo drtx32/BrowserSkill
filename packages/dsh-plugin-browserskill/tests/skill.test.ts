@@ -44,15 +44,15 @@ describe("registerBskSkill", () => {
     expect(content).not.toMatch(/```(?:bash|sh|shell)\b/i);
     expect(content).not.toMatch(/--[a-z]/);
     expect(content).toMatch(/All browser work\s+must use the injected tools directly/);
-    expect(content).toContain("Mandatory workflow");
+    expect(content).toContain("## Session lifecycle");
     expect(content).toContain("Refs invalidate after navigation");
     expect(content).toContain("evaluation and interaction recording are intentionally unsupported");
     // Keep the lazily injected instructions inside a bounded prompt budget,
     // while the lower bound catches accidental truncation of the guidance.
     expect(content.length).toBeGreaterThan(3_000);
     expect(content.length).toBeLessThan(7_000);
-    expect(content).toContain("[visual:screenshot]");
-    expect(content).toContain("nextCursor");
+    expect(content).toContain("semantic, visual, console, and network state");
+    expect(content).toContain("sequence cursors");
     expect(skill.source).toBe("bundled");
     // Source frontmatter is registration metadata and must not leak into the body.
     expect(content.startsWith("---")).toBe(false);
