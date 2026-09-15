@@ -425,10 +425,50 @@ export default defineBackground(() => {
       if (sessionBindings.length === 0) return;
       transport.send({ event: "session.activity", payload: { sessions: sessionBindings } });
     };
+    const publishBrowserStatus = async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true });
+        const active_tabs = tabs.flatMap((tab) => {
+          if (typeof tab.id !== "number" || typeof tab.windowId !== "number") return [];
+          const owner = sessions.findByWindowId(tab.windowId);
+          return [{
+            tab_id: tab.id,
+            window_id: tab.windowId,
+            session_id: owner?.sessionId ?? null,
+            controlled: owner !== null && isAgentControlledTab(owner, tab.id),
+            ...(typeof tab.url === "string" ? { url: tab.url } : {}),
+            ...(typeof tab.title === "string" ? { title: tab.title } : {}),
+          }];
+        });
+        const signals = active_tabs.some((tab) =>
+          ["chrome:", "chrome-extension:", "edge:", "about:"].some((scheme) =>
+            tab.url?.startsWith(scheme),
+          ),
+        )
+          ? ["active_tab_restricted_url"]
+          : [];
+        transport.send({
+          event: "browser.status",
+          payload: {
+            observed_at_ms: Date.now(),
+            active_tabs,
+            // A site report about an ad blocker is not evidence that this
+            // extension caused it; other extensions and browser policy are
+            // intentionally outside this extension's attribution boundary.
+            extension_interference_signals: signals,
+          },
+        });
+      } catch (error) {
+        console.debug("[browser-skill] status snapshot unavailable", error);
+      }
+    };
     await controller.attach(transport, detectBrowserMeta(), connectionEnabled, {
       beforeDisconnect: cleanup,
       onDisconnected: cleanup,
-      onConnected: rebindSessions,
+      onConnected: () => {
+        rebindSessions();
+        void publishBrowserStatus();
+      },
     });
   })().catch((err) => {
     console.error("[browser-skill] controller failed to attach", err);

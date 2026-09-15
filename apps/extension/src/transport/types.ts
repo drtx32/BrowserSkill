@@ -129,6 +129,21 @@ export interface InteractionPolicy {
   request_help: "enabled" | "disabled";
 }
 
+export interface ActiveTabStatus {
+  tab_id: number;
+  window_id: number;
+  session_id: string | null;
+  controlled: boolean;
+  url?: string;
+  title?: string;
+}
+
+export interface BrowserDiagnostics {
+  observed_at_ms: number;
+  active_tabs: ActiveTabStatus[];
+  extension_interference_signals: string[];
+}
+
 export interface BrowserPeerInfo {
   name: string;
   version: string;

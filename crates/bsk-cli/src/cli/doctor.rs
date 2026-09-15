@@ -187,6 +187,7 @@ fn collect_checks(state: DaemonState) -> Vec<CheckResult> {
         check_version_compatible(state.status()),
         check_extension_connected(state.status()),
         check_browsers_protocol_compatible(state.status()),
+        check_browser_diagnostics(state.status()),
     ]
 }
 
@@ -450,6 +451,49 @@ fn check_extension_connected(status: Option<&StatusResult>) -> CheckResult {
                 "install the extension from {EXTENSION_STORE_URL} (Chrome) \
                  or {EXTENSION_STORE_URL_EDGE} (Edge) and load it in the browser"
             ),
+        )
+    }
+}
+
+fn check_browser_diagnostics(status: Option<&StatusResult>) -> CheckResult {
+    let name = "browser tab diagnostics";
+    let Some(status) = status else {
+        return CheckResult::na(name, "daemon status unavailable");
+    };
+    let snapshots: Vec<_> = status
+        .browsers
+        .iter()
+        .filter_map(|browser| browser.diagnostics.as_ref())
+        .collect();
+    if snapshots.is_empty() {
+        return CheckResult::na(name, "extension has not published a browser snapshot");
+    }
+    let signals: Vec<_> = snapshots
+        .iter()
+        .flat_map(|snapshot| snapshot.extension_interference_signals.iter())
+        .collect();
+    let active_tabs: usize = snapshots
+        .iter()
+        .map(|snapshot| snapshot.active_tabs.len())
+        .sum();
+    if signals.is_empty() {
+        CheckResult::ok(
+            name,
+            format!("{} active tab(s) observed; no restricted-url signal", active_tabs),
+        )
+    } else {
+        CheckResult::warn(
+            name,
+            format!(
+                "{} active tab(s); signals: {}",
+                active_tabs,
+                signals
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            "a site-reported blocker may come from another extension or browser policy; inspect those before attributing it to BrowserSkill",
         )
     }
 }
@@ -742,6 +786,7 @@ mod m2_tests {
                 connected_at_ms: 1,
                 version_skew: false,
                 extension_protocol_version: "1.0".into(),
+                diagnostics: None,
             }],
             Vec::new(),
         );
@@ -763,6 +808,7 @@ mod m2_tests {
                 connected_at_ms: 1,
                 version_skew: true,
                 extension_protocol_version: "1.1".into(),
+                diagnostics: None,
             }],
             vec![VersionSkewEntry {
                 instance_id: "alpha".into(),
@@ -801,6 +847,7 @@ mod m2_tests {
                 connected_at_ms: 1,
                 version_skew: true,
                 extension_protocol_version: String::new(),
+                diagnostics: None,
             }],
             vec![VersionSkewEntry {
                 instance_id: "legacy".into(),

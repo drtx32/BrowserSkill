@@ -333,6 +333,7 @@ pub(super) async fn drive_connection<S: tokio::io::AsyncRead + tokio::io::AsyncW
         version_skew,
         last_seen: std::sync::Mutex::new(std::time::Instant::now()),
         heartbeat_seen: std::sync::atomic::AtomicBool::new(false),
+        diagnostics: std::sync::Mutex::new(None),
     });
     // Restore opt-in before making the browser available to CLI callers.
     let audit_ready = state.audit.configure(&browser_id.0, audit_enabled).is_ok();
@@ -491,6 +492,11 @@ async fn handle_inbound_text(state: &Arc<DaemonState>, client: &Arc<BrowserClien
             }
             bsk_protocol::EventKind::SessionActivity => {
                 handle_session_activity(state, &client.id, &ev.payload);
+            }
+            bsk_protocol::EventKind::BrowserStatus => {
+                if let Ok(diagnostics) = serde_json::from_value(ev.payload) {
+                    client.update_diagnostics(diagnostics);
+                }
             }
             bsk_protocol::EventKind::SessionWindowClosed => {
                 handle_session_window_closed(state, &client.id, &ev.payload);

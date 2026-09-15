@@ -62,6 +62,8 @@ pub enum EventKind {
     BrowserDisconnected,
     #[serde(rename = "browser.connected")]
     BrowserConnected,
+    #[serde(rename = "browser.status")]
+    BrowserStatus,
 }
 
 #[derive(Debug, Clone, PartialEq)]

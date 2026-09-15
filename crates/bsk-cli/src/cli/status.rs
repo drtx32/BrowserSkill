@@ -107,8 +107,26 @@ fn render_human(s: &StatusResult) {
             browser.browser_version,
             browser.extension_version,
             browser.session_count,
-            if browser.version_skew { "  (protocol skew)" } else { "" }
+            if browser.version_skew { "  (protocol skew)" } else { "  (connected)" }
         );
+        if let Some(diagnostics) = &browser.diagnostics {
+            for tab in &diagnostics.active_tabs {
+                println!(
+                    "  tab {}  window {}  session {}  {}{}",
+                    tab.tab_id,
+                    tab.window_id,
+                    tab.session_id.as_deref().unwrap_or("-"),
+                    if tab.controlled { "controlled" } else { "uncontrolled" },
+                    tab.url
+                        .as_deref()
+                        .map(|url| format!("  {url}"))
+                        .unwrap_or_default()
+                );
+            }
+            for signal in &diagnostics.extension_interference_signals {
+                println!("  diagnostic  {signal} (not attributed to BrowserSkill)");
+            }
+        }
     }
     for logical in &s.logical_sessions {
         println!(

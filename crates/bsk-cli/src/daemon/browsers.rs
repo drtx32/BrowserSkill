@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 
-use bsk_protocol::system::BrowserStatusEntry;
+use bsk_protocol::system::{BrowserDiagnostics, BrowserStatusEntry};
 
 /// After a daemon cold start the MV3 service worker may take several
 /// seconds to wake, discover the WS port, and finish `system.handshake`.
@@ -157,6 +157,7 @@ pub struct BrowserClient {
     /// before — otherwise a new daemon paired with an old extension would
     /// wrongly drop a live-but-idle connection.
     pub heartbeat_seen: AtomicBool,
+    pub diagnostics: Mutex<Option<BrowserDiagnostics>>,
 }
 
 impl BrowserClient {
@@ -197,7 +198,12 @@ impl BrowserClient {
             connected_at_ms: self.connected_at_ms,
             version_skew: self.version_skew,
             extension_protocol_version: self.extension_protocol_version.clone(),
+            diagnostics: self.diagnostics.lock().expect("browser diagnostics poisoned").clone(),
         }
+    }
+
+    pub fn update_diagnostics(&self, diagnostics: BrowserDiagnostics) {
+        *self.diagnostics.lock().expect("browser diagnostics poisoned") = Some(diagnostics);
     }
 }
 
@@ -425,6 +431,7 @@ mod tests {
             version_skew: false,
             last_seen: Mutex::new(Instant::now()),
             heartbeat_seen: AtomicBool::new(false),
+            diagnostics: Mutex::new(None),
         })
     }
 

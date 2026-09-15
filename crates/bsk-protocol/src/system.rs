@@ -518,6 +518,27 @@ pub struct BrowserStatusEntry {
     /// Protocol version the extension advertised at handshake.
     #[serde(default)]
     pub extension_protocol_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<BrowserDiagnostics>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct BrowserDiagnostics {
+    pub observed_at_ms: i64,
+    pub active_tabs: Vec<ActiveTabStatus>,
+    pub extension_interference_signals: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ActiveTabStatus {
+    pub tab_id: i64,
+    pub window_id: i64,
+    pub session_id: Option<String>,
+    pub controlled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 /// Snapshot of a single live session.
@@ -643,5 +664,45 @@ mod status_compat_tests {
             .expect("legacy skew entry should deserialize");
         assert_eq!(skew.server_protocol_version, "");
         assert_eq!(skew.client_protocol_version, "");
+    }
+
+    #[test]
+    fn browser_diagnostics_round_trip_active_tab_and_unattributed_signal() {
+        let status: StatusResult = serde_json::from_value(serde_json::json!({
+            "daemon_version": "0.1.0",
+            "protocol_version": "1.0",
+            "pid": 42,
+            "uptime_secs": 7,
+            "ws_port": 52700,
+            "sock_path": "/tmp/bsk.sock",
+            "browsers": [{
+                "instance_id": "browser-a",
+                "browser_name": "chrome",
+                "browser_version": "131",
+                "extension_version": "0.2.1",
+                "label": "Personal",
+                "session_count": 1,
+                "extension_protocol_version": "1.0",
+                "diagnostics": {
+                    "observed_at_ms": 100,
+                    "active_tabs": [{
+                        "tab_id": 9,
+                        "window_id": 11,
+                        "session_id": "abcd",
+                        "controlled": true,
+                        "url": "https://example.test"
+                    }],
+                    "extension_interference_signals": ["active_tab_restricted_url"]
+                }
+            }],
+            "sessions": []
+        }))
+        .expect("browser diagnostics should deserialize");
+        let diagnostics = status.browsers[0]
+            .diagnostics
+            .as_ref()
+            .expect("diagnostics should be present");
+        assert_eq!(diagnostics.active_tabs[0].session_id.as_deref(), Some("abcd"));
+        assert_eq!(diagnostics.extension_interference_signals.len(), 1);
     }
 }
