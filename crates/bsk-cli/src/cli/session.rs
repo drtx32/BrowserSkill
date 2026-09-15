@@ -114,6 +114,12 @@ struct StartParams {
     height: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     focused: Option<bool>,
+    #[serde(skip_serializing_if = "is_false")]
+    reuse_default: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Deserialize)]
@@ -237,6 +243,7 @@ pub struct SessionStartOptions {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub focused: Option<bool>,
+    pub reuse_default: bool,
 }
 
 /// Start a session and open the Agent Window. Used by `session start` and `record start`.
@@ -250,9 +257,16 @@ pub fn start_session(sock: PathBuf, opts: SessionStartOptions) -> Result<StartRe
             width: opts.width,
             height: opts.height,
             focused: opts.focused,
+            reuse_default: opts.reuse_default,
         }),
         SESSION_START_IPC_TIMEOUT,
     )
+}
+
+/// Ensure the stable default session, reusing its active physical session
+/// when possible and creating one only when the daemon has lost it.
+pub fn ensure_session(sock: PathBuf, opts: SessionStartOptions) -> Result<StartReply, CliError> {
+    start_session(sock, SessionStartOptions { reuse_default: true, ..opts })
 }
 
 /// Stop a single session by id.

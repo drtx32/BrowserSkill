@@ -865,6 +865,8 @@ struct CliSessionStartParams {
     pub height: Option<u32>,
     #[serde(default)]
     pub focused: Option<bool>,
+    #[serde(default)]
+    pub reuse_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -978,6 +980,7 @@ async fn handle_session_start(
             width: None,
             height: None,
             focused: None,
+            reuse_default: false,
         }
     } else {
         serde_json::from_value(params).map_err(|err| RpcError {
@@ -999,6 +1002,25 @@ async fn handle_session_start(
             });
         }
     };
+    if params.reuse_default
+        && let Some(existing) = state
+            .logical_sessions
+            .resolve(&state.sessions, super::logical_session::DEFAULT_SESSION)
+            .and_then(|id| state.sessions.get(&id))
+        && params
+            .browser_instance_id
+            .as_deref()
+            .is_none_or(|requested| requested == existing.browser_id.0)
+        && params.width.is_none()
+        && params.height.is_none()
+        && params.focused.is_none()
+    {
+        return Ok(serde_json::to_value(CliSessionStartResult {
+            session_id: existing.id.0,
+            browser_instance_id: existing.browser_id.0,
+            agent_window_id: existing.agent_window_id,
+        }).unwrap_or(Value::Null));
+    }
     match start_session(
         &state.browsers,
         &state.sessions,

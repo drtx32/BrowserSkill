@@ -79,6 +79,7 @@ fn dispatch(cli: Cli, format: Format) -> Result<(), CliError> {
         .map_err(CliError::Local),
         Command::Session(cmd) => cli::session::dispatch(cmd, format),
         Command::Browsers => cli::browsers::dispatch(format),
+        Command::Bootstrap(args) => cli::bootstrap::dispatch(args, format),
         Command::Tab(cmd) => cli::tab::dispatch(cmd, format),
         Command::Window(cmd) => cli::window::dispatch(cmd, format),
         Command::Emulate(args) => cli::emulate::dispatch(args, format),
