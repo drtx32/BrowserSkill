@@ -53,7 +53,8 @@ commands. Cancelling that task or shutting down its host can still stop the
 daemon; bsk cannot make a process outlive the environment that owns it.
 
 Start and stop the shared daemon in this owning environment. Browser task
-cleanup is `bsk session stop`, which leaves other sessions and the daemon alone.
+cleanup, when explicitly requested, is `bsk session stop`, which leaves other sessions and the
+daemon alone. A session is otherwise preserved across task completion and agent handoff.
 The daemon's existing idle-exit behavior is unchanged: with no connected
 browsers, active sessions or IPC clients, its default idle timeout is 10 minutes.
 If the host workflow needs a longer idle window, pass the existing `--daemon-idle`

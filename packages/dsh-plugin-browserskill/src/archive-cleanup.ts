@@ -100,7 +100,7 @@ export function armArchiveCleanup(
       for (const sessionId of registry.ownedByDsh(dshSessionId)) {
         // stopSession owns the full teardown (kill in-flight tools, queue
         // the daemon stop, drop registry + observation entries); a failure
-        // just leaves the session for idle timeout or unload cleanup.
+        // leaves the session available for an explicit stop or recovery.
         void observation.stopSession(sessionId).catch(() => {});
       }
     }

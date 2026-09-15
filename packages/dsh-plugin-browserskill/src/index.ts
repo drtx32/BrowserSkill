@@ -5,7 +5,7 @@
  * Each tool spawns `bsk <cmd> --json`, parses the structured output, and
  * returns a canonical JSON value. The plugin tracks the sessions it starts so
  * one agent conversation can drive several browsers at once; unloading the
- * plugin stops every tracked session and kills any in-flight bsk children.
+ * plugin kills in-flight bsk children but does not end durable browser sessions.
  *
  * @module dsh-plugin-browserskill
  */
@@ -113,8 +113,8 @@ export function apply(
     return () => removeRoutes();
   });
   // Reap a conversation's browsers when the conversation itself is archived:
-  // archived sessions are hidden from every surface, so their Agent Windows
-  // would otherwise linger unreachable until idle timeout or unload.
+  // archived sessions are hidden from every surface, so explicitly archive-owned
+  // Agent Windows must be stopped to avoid leaving them unreachable.
   const disarmArchiveCleanup = armArchiveCleanup(ctx, registry, observation);
 
   // Non-blocking install probe: warn early when bsk is missing instead of
@@ -131,11 +131,8 @@ export function apply(
     },
   );
 
-  // Unload cleanup: kill in-flight children, then stop every session this
-  // plugin OWNS (created via browser_session action=start). Referenced or unknown
-  // sessions belonging to other programs on the shared daemon are never
-  // touched; per-stop failures (already stopped externally, daemon restart)
-  // are swallowed so one stale handle cannot abort the rest.
+  // Unload cleanup: kill in-flight children. Durable sessions survive plugin
+  // unload so a later agent turn or human handoff can continue using them.
   ctx.effect(() => {
     return () => {
       removeSuite();
@@ -144,10 +141,7 @@ export function apply(
       removeRoutes();
       disarmArchiveCleanup();
       runner.killAll();
-      const stops = registry
-        .ownedIds()
-        .map((sessionId) => observation.stopSession(sessionId).catch(() => false));
-      return Promise.all(stops).then(() => observation.dispose());
+      return observation.dispose();
     };
   });
 }

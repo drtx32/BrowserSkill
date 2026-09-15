@@ -26,7 +26,6 @@ use crate::daemon::{
     browsers::{BROWSER_LIVENESS_TICK, BROWSER_LIVENESS_TIMEOUT, EXTENSION_CONNECT_WAIT},
     info as daemon_info, ipc, lockfile, paths,
     probe::{self, PROBE_TIMEOUT, Probe},
-    sessions::{StopSessionError, forget_session, stop_session},
     state::{DaemonState, PROTOCOL_VERSION},
     ws,
 };
@@ -45,7 +44,6 @@ pub(crate) const DAEMON_REPLACEMENT_WAIT_ENV: &str = "BSK_DAEMON_REPLACES_PID";
 #[derive(Debug, Clone)]
 pub struct DaemonConfig {
     pub ws_port: u16,
-    pub session_idle: Duration,
     pub daemon_idle: Duration,
     /// Skip the Origin allow-list (tests / `--insecure-origin`).
     pub allow_any_origin: bool,
@@ -61,13 +59,12 @@ pub struct DaemonConfig {
 }
 
 impl DaemonConfig {
-    /// Test/embed helper: a minimal config locked to `port` with
-    /// generous idle timeouts. Used by integration tests that spin up
+    /// Test/embed helper: a minimal config locked to `port` with a
+    /// generous daemon idle timeout. Used by integration tests that spin up
     /// a daemon via [`super::run`].
     pub fn new(port: u16) -> Self {
         Self {
             ws_port: port,
-            session_idle: Duration::from_secs(60 * 5),
             daemon_idle: Duration::from_secs(60 * 30),
             allow_any_origin: false,
             extension_connect_wait: EXTENSION_CONNECT_WAIT,
@@ -95,7 +92,6 @@ impl From<&StartArgs> for DaemonConfig {
     fn from(args: &StartArgs) -> Self {
         Self {
             ws_port: args.resolved_port(),
-            session_idle: args.resolved_session_idle(),
             daemon_idle: args.resolved_daemon_idle(),
             allow_any_origin: false,
             extension_connect_wait: EXTENSION_CONNECT_WAIT,
@@ -271,7 +267,6 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
             .transfers
             .initialize()
             .context("initialize transfer staging")?;
-        let session_idle_task = spawn_session_idle_reaper(Arc::clone(&state));
         let browser_liveness_task = spawn_browser_liveness_reaper(Arc::clone(&state));
         // Fired by the update check task after a successful auto-update:
         // the replacement daemon (or Windows update helper) is ready, so
@@ -441,8 +436,6 @@ pub fn run_foreground(cfg: DaemonConfig) -> Result<()> {
 
         let _ = ipc_shutdown_tx.send(());
         let _ = ipc_task.await;
-        session_idle_task.abort();
-        let _ = session_idle_task.await;
         browser_liveness_task.abort();
         let _ = browser_liveness_task.await;
         update_check_task.abort();
@@ -500,60 +493,6 @@ pub(crate) fn spawn_browser_liveness_reaper(
                         state.session_interrupts.drop_session(&s.id);
                         state.transfers.release_session(&s.id.0);
                         debug!(session = %s.id, "purged session on browser liveness timeout");
-                    }
-                }
-            }
-        }
-    })
-}
-
-/// Spawn the cooperative session-idle reaper shared by the production
-/// foreground daemon and the test/embed daemon entry point.
-pub(crate) fn spawn_session_idle_reaper(state: Arc<DaemonState>) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let session_idle = state.config.session_idle;
-        let tick = (session_idle / 4)
-            .max(Duration::from_millis(100))
-            .min(Duration::from_secs(30));
-        let mut ticker = tokio::time::interval(tick);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        // `interval`'s first tick is immediate. Consume it so a zero/very
-        // short test setting still gets one real inactivity window.
-        ticker.tick().await;
-
-        loop {
-            ticker.tick().await;
-            let idle_ids = state.sessions.idle_ids_at(session_idle, Instant::now());
-            for session_id in idle_ids {
-                match stop_session(
-                    &state.browsers,
-                    &state.sessions,
-                    &state.tool_queues,
-                    &state.session_interrupts,
-                    &session_id,
-                    Duration::from_secs(10),
-                    None,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        state.transfers.release_session(&session_id.0);
-                        info!(session = %session_id, "idle session stopped");
-                    }
-                    Err(StopSessionError::SessionBusy | StopSessionError::Stopping) => {
-                        debug!(session = %session_id, "idle session still active; retrying later");
-                    }
-                    Err(StopSessionError::NotFound | StopSessionError::BrowserGone) => {
-                        forget_session(
-                            &state.sessions,
-                            &state.tool_queues,
-                            &state.session_interrupts,
-                            &session_id,
-                        );
-                        state.transfers.release_session(&session_id.0);
-                    }
-                    Err(err) => {
-                        warn!(session = %session_id, error = %err, "failed to stop idle session");
                     }
                 }
             }
@@ -722,12 +661,11 @@ pub(crate) fn spawn_update_check_task(
 }
 
 /// Rebuild the `StartArgs` for the replacement daemon from the running
-/// config so the respawn keeps the same port and idle timeouts.
+/// config so the respawn keeps the same port and daemon idle timeout.
 fn restart_start_args(cfg: &DaemonConfig) -> StartArgs {
     StartArgs {
         port: Some(cfg.ws_port),
         foreground: false,
-        session_idle: Some(cfg.session_idle),
         daemon_idle: Some(cfg.daemon_idle),
     }
 }
@@ -987,9 +925,6 @@ fn apply_start_args(cmd: &mut std::process::Command, args: &StartArgs) {
     if let Some(p) = args.port {
         cmd.arg("--port").arg(p.to_string());
     }
-    if let Some(d) = args.session_idle {
-        cmd.arg("--session-idle").arg(format_duration(d));
-    }
     if let Some(d) = args.daemon_idle {
         cmd.arg("--daemon-idle").arg(format_duration(d));
     }
@@ -1014,9 +949,9 @@ fn validate_existing_start(args: &StartArgs, status: &StatusResult) -> Result<()
             status.ws_port
         ));
     }
-    if args.session_idle.is_some() || args.daemon_idle.is_some() {
+    if args.daemon_idle.is_some() {
         return Err(anyhow::anyhow!(
-            "daemon already running; use `bsk daemon restart` to apply idle timeout changes"
+            "daemon already running; use `bsk daemon restart` to apply daemon idle timeout changes"
         ));
     }
     Ok(())
@@ -1114,14 +1049,12 @@ mod tests {
     fn restart_start_args_preserve_the_running_config() {
         let cfg = DaemonConfig {
             ws_port: 1234,
-            session_idle: Duration::from_secs(11),
             daemon_idle: Duration::from_secs(22),
             ..DaemonConfig::new(0)
         };
         let args = restart_start_args(&cfg);
         assert_eq!(args.port, Some(1234));
         assert!(!args.foreground);
-        assert_eq!(args.session_idle, Some(Duration::from_secs(11)));
         assert_eq!(args.daemon_idle, Some(Duration::from_secs(22)));
     }
 

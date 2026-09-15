@@ -832,9 +832,8 @@ fn windows_replacement_script(restart_args: Option<&StartArgs>, attempts: u32) -
     // stay in Unicode environment variables, including %, ! and shell symbols.
     let restart = restart_args.map_or_else(String::new, |args| {
         format!(
-            "\"%BSK_UPDATE_TARGET%\" daemon start --port {} --session-idle {}ms --daemon-idle {}ms\r\nif errorlevel 1 goto failed_restart\r\n",
+            "\"%BSK_UPDATE_TARGET%\" daemon start --port {} --daemon-idle {}ms\r\nif errorlevel 1 goto failed_restart\r\n",
             args.resolved_port(),
-            args.resolved_session_idle().as_millis(),
             args.resolved_daemon_idle().as_millis(),
         )
     });
@@ -1055,7 +1054,6 @@ mod tests {
     fn windows_replacement_script_preserves_restart_config() {
         let args = StartArgs {
             port: Some(54321),
-            session_idle: Some(Duration::from_millis(1234)),
             daemon_idle: Some(Duration::from_secs(75)),
             ..Default::default()
         };
@@ -1063,7 +1061,7 @@ mod tests {
         assert!(script.is_ascii());
         assert!(
             script
-                .contains("daemon start --port 54321 --session-idle 1234ms --daemon-idle 75000ms")
+                .contains("daemon start --port 54321 --daemon-idle 75000ms")
         );
         assert!(!windows_replacement_script(None, 120).contains("daemon start"));
     }

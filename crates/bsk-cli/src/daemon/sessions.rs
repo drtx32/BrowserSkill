@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use bsk_protocol::system::{BrowserStatusEntry, SessionStatusEntry};
 use bsk_protocol::tools::{
@@ -70,9 +70,6 @@ impl Session {
 pub struct SessionRegistry {
     audit: Option<Arc<super::audit::AuditStore>>,
     inner: Mutex<HashMap<SessionId, Session>>,
-    /// Operational metadata kept outside the public `Session` wire/domain
-    /// shape so idle enforcement does not break external struct users.
-    last_activity: Mutex<HashMap<SessionId, Instant>>,
 }
 
 impl SessionRegistry {
@@ -116,10 +113,6 @@ impl SessionRegistry {
         let session_id = session.id.clone();
         let mut sessions = self.inner.lock().expect("session registry poisoned");
         sessions.insert(session_id.clone(), session);
-        self.last_activity
-            .lock()
-            .expect("session activity registry poisoned")
-            .insert(session_id, Instant::now());
     }
 
     /// Reserve a fresh, collision-free [`SessionId`] under the registry
@@ -158,10 +151,6 @@ impl SessionRegistry {
                     created_at_ms: now_ms_fn(),
                 },
             );
-            self.last_activity
-                .lock()
-                .expect("session activity registry poisoned")
-                .insert(candidate.clone(), Instant::now());
             return Some(candidate);
         }
         None
@@ -194,10 +183,6 @@ impl SessionRegistry {
             .lock()
             .expect("session registry poisoned")
             .remove(session_id);
-        self.last_activity
-            .lock()
-            .expect("session activity registry poisoned")
-            .remove(session_id);
     }
 
     pub fn remove(&self, id: &SessionId) -> Option<Session> {
@@ -205,10 +190,6 @@ impl SessionRegistry {
             .inner
             .lock()
             .expect("session registry poisoned")
-            .remove(id);
-        self.last_activity
-            .lock()
-            .expect("session activity registry poisoned")
             .remove(id);
         if removed.is_some()
             && let Some(audit) = &self.audit
@@ -239,42 +220,6 @@ impl SessionRegistry {
             .cloned()
     }
 
-    /// Record accepted or completed tool activity for a live session.
-    pub fn touch(&self, id: &SessionId) -> bool {
-        if !self
-            .inner
-            .lock()
-            .expect("session registry poisoned")
-            .contains_key(id)
-        {
-            return false;
-        }
-        self.last_activity
-            .lock()
-            .expect("session activity registry poisoned")
-            .insert(id.clone(), Instant::now());
-        true
-    }
-
-    /// Return sessions whose last tool activity is at least `idle_for`
-    /// old. The caller supplies `now` to keep boundary tests deterministic.
-    pub fn idle_ids_at(&self, idle_for: Duration, now: Instant) -> Vec<SessionId> {
-        let sessions = self.inner.lock().expect("session registry poisoned");
-        let activity = self
-            .last_activity
-            .lock()
-            .expect("session activity registry poisoned");
-        sessions
-            .values()
-            .filter(|session| {
-                activity
-                    .get(&session.id)
-                    .is_some_and(|last| now.saturating_duration_since(*last) >= idle_for)
-            })
-            .map(|session| session.id.clone())
-            .collect()
-    }
-
     /// Drop all sessions owned by `browser_id` (e.g. on disconnect).
     pub fn purge_browser(&self, browser_id: &BrowserId) -> Vec<Session> {
         let mut guard = self.inner.lock().expect("session registry poisoned");
@@ -286,14 +231,6 @@ impl SessionRegistry {
         for s in &drained {
             guard.remove(&s.id);
         }
-        let mut activity = self
-            .last_activity
-            .lock()
-            .expect("session activity registry poisoned");
-        for session in &drained {
-            activity.remove(&session.id);
-        }
-        drop(activity);
         drop(guard);
         if let Some(audit) = &self.audit {
             for session in &drained {
@@ -759,9 +696,9 @@ pub async fn stop_session(
         session_id: session_id.0.clone(),
     })
     .unwrap();
-    // Internal callers (idle reaping and shutdown) do not have a CLI-owned
-    // token, but still need timeout-driven WS cancellation so a late window
-    // close cannot leave daemon state pointing at a vanished session.
+    // Internal callers do not have a CLI-owned token, but still need
+    // timeout-driven WS cancellation so a late window close cannot leave
+    // daemon state pointing at a vanished session.
     let lifecycle_cancel = Some(cancel.unwrap_or_default());
     match queues
         .dispatch_after_closing(

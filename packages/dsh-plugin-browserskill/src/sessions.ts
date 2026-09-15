@@ -9,7 +9,7 @@
  * terminals, or dsh instances): the registry ONLY ever holds sessions created
  * by this plugin's browser_session start action. Tools cannot see or act on any
  * other session — an explicit `session` argument naming a foreign id is an
- * error, the list tool shows owned sessions only, and stop/unload cleanup
+ * error, the list tool shows owned sessions only, and explicit stop cleanup
  * can never touch a session this plugin did not create.
  */
 

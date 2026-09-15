@@ -95,7 +95,6 @@ pub struct DaemonHandle {
     state: Arc<DaemonState>,
     ws: WsHandle,
     ipc: Option<IpcHandle>,
-    session_idle_task: JoinHandle<()>,
     browser_liveness_task: JoinHandle<()>,
 }
 
@@ -104,14 +103,12 @@ impl DaemonHandle {
         state: Arc<DaemonState>,
         ws: WsHandle,
         ipc: Option<IpcHandle>,
-        session_idle_task: JoinHandle<()>,
         browser_liveness_task: JoinHandle<()>,
     ) -> Self {
         Self {
             state,
             ws,
             ipc,
-            session_idle_task,
             browser_liveness_task,
         }
     }
@@ -131,8 +128,6 @@ impl DaemonHandle {
     /// Stop the WS server (and IPC if running). Returns once both join
     /// handles complete.
     pub async fn shutdown(self) {
-        self.session_idle_task.abort();
-        let _ = await_join(self.session_idle_task).await;
         self.browser_liveness_task.abort();
         let _ = await_join(self.browser_liveness_task).await;
         self.ws.shutdown.notify_waiters();

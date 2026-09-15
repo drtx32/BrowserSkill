@@ -142,8 +142,6 @@ fn parses_daemon_start_with_flags() {
         "52900",
         "--daemon-idle",
         "2s",
-        "--session-idle",
-        "30s",
     ]);
     let Command::Daemon(DaemonCmd::Start(args)) = cli.command else {
         panic!("expected daemon start subcommand");
@@ -151,7 +149,6 @@ fn parses_daemon_start_with_flags() {
     assert!(args.foreground);
     assert_eq!(args.resolved_port(), 52900);
     assert_eq!(args.resolved_daemon_idle(), Duration::from_secs(2));
-    assert_eq!(args.resolved_session_idle(), Duration::from_secs(30));
 }
 
 #[test]
