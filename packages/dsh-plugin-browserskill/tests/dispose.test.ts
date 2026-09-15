@@ -1,7 +1,5 @@
-// Unload-cleanup ownership discipline: dispose must stop exactly the sessions
-// this plugin created — never referenced/foreign sessions on the shared
-// daemon — and a stale handle (already stopped elsewhere, daemon restarted)
-// must not abort the remaining stops.
+// Unload-cleanup ownership discipline: dispose kills in-flight children but
+// leaves durable browser sessions available for later turns and handoffs.
 
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it } from "vitest";
@@ -35,7 +33,7 @@ function makeExec(): ToolRunContext {
 }
 
 describe("dispose cleanup ownership", () => {
-  it("stops only plugin-owned sessions and tolerates stale handles", async () => {
+  it("keeps durable sessions alive and never stops foreign sessions", async () => {
     const calls: FakeCall[] = [];
     const startReplies = [
       { session_id: "own1", browser_instance_id: "b1" },
@@ -88,7 +86,7 @@ describe("dispose cleanup ownership", () => {
     const stops = calls
       .map((call) => call.args.join(" "))
       .filter((joined) => joined.startsWith("session stop"));
-    expect(stops.sort()).toEqual(["session stop own1", "session stop own2"]);
+    expect(stops).toEqual([]);
     expect(stops.some((joined) => joined.includes("ext9"))).toBe(false);
   });
 });
