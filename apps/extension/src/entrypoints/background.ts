@@ -10,6 +10,7 @@ import {
   setConnectionEnabled as persistConnectionEnabled,
   setLabel,
 } from "@/lib/instance-id";
+import { interactionPolicy, interactionPreferences } from "@/lib/interaction-preferences";
 import { startKeepalive } from "@/lib/keepalive";
 import {
   OVERLAY_AGENT_STATE,
@@ -26,6 +27,7 @@ import {
 import { POPUP_PORT_NAME, type PopupInbound, type PopupOutbound } from "@/lib/popup-bridge";
 import { recordFrameCoordinator } from "@/lib/recording/frame-coordinator";
 import { attachSessionsLiveFlag } from "@/lib/sessions-live-flag";
+import { attachLongScreenshot } from "@/long-screenshot/background";
 import { createDisconnectCleanup } from "@/session-manager/disconnect-cleanup";
 import { attachSessionEventHandler } from "@/session-manager/event-handler";
 import { isAgentControlledTab, SessionManager } from "@/session-manager/manager";
@@ -55,6 +57,9 @@ export default defineBackground(() => {
   const controller = new ConnectionController();
   const transport = new WSTransport({ url: __BSK_DAEMON_WS_URL__ });
   const sessions = new SessionManager();
+  attachLongScreenshot({
+    isTabBusy: (tabId) => sessions.list().some((session) => isAgentControlledTab(session, tabId)),
+  });
   attachAuditBridge(controller, transport);
   const cdp = new ChromiumCdp(undefined, {
     shouldAutoAcceptDialog: async (tabId) => {
@@ -229,7 +234,24 @@ export default defineBackground(() => {
   attachRecordFinishListener(recordDeps);
   attachRecordQueryListener(recordDeps);
 
+  interactionPreferences.subscribe((preferences) => {
+    for (const ctx of sessions.list()) {
+      try {
+        transport.send({
+          event: "session.interaction_changed",
+          payload: {
+            session_id: ctx.sessionId,
+            interaction: interactionPolicy(preferences),
+          },
+        });
+      } catch {
+        /* Reconnection tears down these sessions. */
+      }
+    }
+  });
+  void interactionPreferences.readyOrFallback();
   const dispatcher = new ToolDispatcher({
+    interactionPreferences,
     transport,
     sessions,
     cdp,
@@ -239,8 +261,14 @@ export default defineBackground(() => {
     onAgentTabClaimed: (tabId, windowId) => {
       void pushOverlayStateForTab(tabId, windowId);
     },
-    approveBorrow: (ctx) =>
-      requestBorrowConfirmation(ctx.tabId, {
+    approveBorrow: async (ctx) => {
+      await interactionPreferences.readyOrFallback();
+      return requestBorrowConfirmation(ctx.tabId, {
+        timeoutMs: ctx.timeoutMs,
+        autoAllow: {
+          get: () => !interactionPreferences.get().confirmTabBorrow,
+          subscribe: (listener) => interactionPreferences.subscribe(listener),
+        },
         ...(ctx.signal !== undefined ? { signal: ctx.signal } : {}),
         deps: {
           // Skip every Agent Window when choosing where to render the
@@ -251,7 +279,8 @@ export default defineBackground(() => {
           // without re-creating the dispatcher.
           notificationCopy: makeBorrowNotificationCopy(),
         },
-      }),
+      });
+    },
     helpNotificationCopy: () => ({
       title: i18n.t("helpRequest.notificationTitle", { ns: "extension" }),
       body: "",
