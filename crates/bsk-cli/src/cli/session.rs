@@ -633,6 +633,7 @@ mod start_params_tests {
                 width: None,
                 height: None,
                 focused: None,
+                reuse_default: false,
             };
             let expected = task_name.map_or_else(
                 || serde_json::json!({}),
