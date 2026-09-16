@@ -27,6 +27,7 @@ import {
   type VomNode,
   type VomOptions,
   type VomScene,
+  type VomVirtualizedListEvidence,
 } from "@browser-skill/vom";
 import { ChromiumCdp } from "@/browser-driver/chromium-cdp";
 import type { CdpTarget } from "@/browser-driver/frame-graph";
@@ -98,6 +99,18 @@ export const chromeTabsCaptureApi: ChromeTabsCaptureApi = {
 
 /** Re-export so the M6 test suite keeps its import path. */
 export const normaliseRef = sharedNormaliseRef;
+
+export function toWireVirtualizedLists(
+  lists: VomVirtualizedListEvidence[] | undefined,
+): NonNullable<ObserveResult["virtualized_lists"]> {
+  return (lists ?? []).map((list) => ({
+    container_identity: list.containerIdentity,
+    completeness: list.completeness,
+    reason: list.reason,
+    visible_count: list.visibleCount,
+    ...(list.totalCount !== undefined ? { total_count: list.totalCount } : {}),
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // screenshot — `tool.screenshot`
@@ -1102,7 +1115,7 @@ async function handleVomObservation(
       return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
         ...page,
         ...(observation.virtualizedLists?.length
-          ? { virtualized_lists: observation.virtualizedLists }
+          ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
           : {}),
         ...(observation.hoverProbe?.performed
           ? {
@@ -1151,7 +1164,7 @@ async function handleVomObservation(
       tab_id: target.tabId,
       truncated: observation.truncated,
       ...(toolName === "observe" && observation.virtualizedLists?.length
-        ? { virtualized_lists: observation.virtualizedLists }
+        ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
         : {}),
       ...(toolName === "observe" && observation.hoverProbe?.performed
         ? {

@@ -491,4 +491,25 @@ mod tests {
         let round: ObserveResult = serde_json::from_value(v).unwrap();
         assert_eq!(round, r);
     }
+
+    #[test]
+    fn observe_result_accepts_snake_case_virtualized_evidence() {
+        let result: ObserveResult = serde_json::from_value(json!({
+            "text": "@vom 1\n",
+            "ref_count": 0,
+            "tab_id": 42,
+            "truncated": false,
+            "virtualized_lists": [{
+                "container_identity": "id:results",
+                "completeness": "partial",
+                "reason": "declared-size",
+                "visible_count": 4,
+                "total_count": 20
+            }]
+        }))
+        .unwrap();
+        assert_eq!(result.virtualized_lists[0].container_identity, "id:results");
+        assert_eq!(result.virtualized_lists[0].visible_count, 4);
+        assert_eq!(result.virtualized_lists[0].total_count, Some(20));
+    }
 }
