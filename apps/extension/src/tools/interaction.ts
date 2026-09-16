@@ -73,6 +73,11 @@ export interface ResolvedActionTarget {
   usedSelector?: string;
 }
 
+export interface ClickDispatchObserver {
+  beforePressDispatch(): RpcError | null;
+  afterPressDispatch(): void;
+}
+
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_HOVER_SETTLE_MS = 200;
 
@@ -550,6 +555,7 @@ export async function clickResolvedTarget(
   params: Pick<ClickParams, "button" | "click_count" | "modifiers">,
   deps: InteractionDeps,
   markSent?: () => void,
+  observer?: ClickDispatchObserver,
 ): Promise<ClickResult | RpcError> {
   const { tab: target } = resolved;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
@@ -581,7 +587,16 @@ export async function clickResolvedTarget(
     return { code: "invalid_params", message: "click_count must be greater than zero" };
   }
   const error = await withClickOverlay(target.tabId, centre, deps, (verifyOverlay) =>
-    dispatchClickAtPoint(target.tabId, centre, params, deps, verifyOverlay, undefined, markSent),
+    dispatchClickAtPoint(
+      target.tabId,
+      centre,
+      params,
+      deps,
+      verifyOverlay,
+      undefined,
+      markSent,
+      observer,
+    ),
   );
   if (error) return error;
 
@@ -603,6 +618,7 @@ async function dispatchClickAtPoint(
   verifyOverlay: () => Promise<RpcError | null>,
   beforePress?: () => Promise<RpcError | null>,
   markSent?: () => void,
+  observer?: ClickDispatchObserver,
 ): Promise<RpcError | null> {
   const button = params.button ?? "left",
     modifiers = modifiersBitfield(params.modifiers);
@@ -655,6 +671,10 @@ async function dispatchClickAtPoint(
       if (deps.signal?.aborted) return failure({ code: "cancelled", message: "click aborted" });
       deps.onInputSent?.(tabId);
       markSent?.();
+      if (observer) {
+        const error = observer.beforePressDispatch();
+        if (error) return failure(error);
+      }
       attempted = true;
       releaseNeeded = true;
       await deps.cdp.send(tabId, "Input.dispatchMouseEvent", {
@@ -665,6 +685,7 @@ async function dispatchClickAtPoint(
         modifiers,
       });
       deps.onInputSent?.(tabId);
+      observer?.afterPressDispatch();
       await release();
       releaseNeeded = false;
     }
