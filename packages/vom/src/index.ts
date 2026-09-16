@@ -58,4 +58,5 @@ export type {
   VirtualizedCompleteness,
   VirtualizedListAnalysis,
   VirtualizedSegment,
+  VirtualizedAdvance,
 } from "./virtualized";

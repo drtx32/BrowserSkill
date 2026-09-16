@@ -23,6 +23,19 @@ describe("virtualized list awareness", () => {
   it("keeps fingerprints stable across recycled windows", () => {
     expect(stableItemFingerprint(node(2, 1, { role: "listitem", attrs: { "data-id": "42" } }))).toBe("data-id:42");
     expect(stableItemFingerprint(node(9, 1, { role: "listitem", attrs: { "data-id": "42" } }))).toBe("data-id:42");
+    expect(stableItemFingerprint(node(2, 1, { role: "listitem", backendNodeId: 7 }))).toContain("unstable-backend:7");
+    expect(stableItemFingerprint(node(9, 1, { role: "listitem", backendNodeId: 7 }))).not.toBe(
+      stableItemFingerprint(node(2, 1, { role: "listitem", backendNodeId: 7 })),
+    );
+  });
+
+  it("keeps mixed geometry windows unknown instead of complete", () => {
+    const result = analyzeVirtualizedLists([
+      node(1, null, { role: "list" }),
+      node(2, 1, { role: "listitem", name: "Visible" }),
+      node(3, 1, { role: "listitem", name: "Pending", rect: null }),
+    ]);
+    expect(result[0]).toMatchObject({ completeness: "unknown", reason: "incomplete-geometry" });
   });
 
   it("deduplicates overlapping windows and terminates at a bound", async () => {
@@ -43,5 +56,21 @@ describe("virtualized list awareness", () => {
       maxStalledSegments: 2,
     });
     expect(result).toMatchObject({ items: ["a"], complete: false, termination: "stalled", segments: 3 });
+  });
+
+  it("distinguishes a legitimate end sentinel from an advance failure", async () => {
+    const end = await collectVirtualizedSegments({
+      read: async () => ({ items: ["a"], complete: false }),
+      advance: async () => "end-of-list" as const,
+      fingerprint: (item) => item,
+    });
+    const failed = await collectVirtualizedSegments({
+      read: async () => ({ items: ["a"], complete: false }),
+      advance: async () => "failed" as const,
+      fingerprint: (item) => item,
+    });
+    expect(end.termination).toBe("end-of-list");
+    expect(end.complete).toBe(true);
+    expect(failed.termination).toBe("advance-failed");
   });
 });
