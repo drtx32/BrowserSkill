@@ -1,4 +1,4 @@
-import type { Rect, RenderedRef, VomResult } from "@browser-skill/vom";
+import type { Rect, RenderedRef, VomResult, VomVirtualizedListEvidence } from "@browser-skill/vom";
 import type { CdpTarget } from "@/browser-driver/frame-graph";
 import { readRecordingDocumentIdentity } from "@/shared/recording-document-identity";
 import type { CapturedSurfaceProbe } from "./capture";
@@ -46,6 +46,7 @@ export interface CaptureVomObservationResult {
    * far the page may have drifted from the returned snapshot.
    */
   hoverProbe?: HoverProbeReport;
+  virtualizedLists?: VomVirtualizedListEvidence[];
 }
 
 export interface HoverProbeReport {
@@ -90,6 +91,7 @@ export function projectRecordSafeObservation(input: {
   rendered: VomResult;
   surfaceProbes?: CapturedSurfaceProbe[];
   hoverProbe?: HoverProbeReport;
+  virtualizedLists?: VomVirtualizedListEvidence[];
 }): CaptureVomObservationResult {
   return {
     text: input.rendered.text,
@@ -100,5 +102,6 @@ export function projectRecordSafeObservation(input: {
     matchNodes: projectMatchNodes(input.frameDocuments),
     surfaceProbes: input.surfaceProbes,
     ...(input.hoverProbe ? { hoverProbe: input.hoverProbe } : {}),
+    ...(input.virtualizedLists?.length ? { virtualizedLists: input.virtualizedLists } : {}),
   };
 }

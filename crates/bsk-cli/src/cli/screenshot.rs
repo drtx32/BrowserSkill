@@ -49,6 +49,10 @@ pub struct ScreenshotArgs {
     #[arg(long, requires = "full_page", value_parser = crate::cli::navigate::parse_timeout_ms)]
     pub timeout: Option<u32>,
 
+    /// Traverse a nested/virtualized scroll container with bounded semantic windows.
+    #[arg(long, requires = "full_page")]
+    pub virtualized: bool,
+
     /// Output PNG path. Defaults to `$TMPDIR/bsk-screenshot-<unix-ms>.png`.
     #[arg(long)]
     pub out: Option<PathBuf>,
@@ -134,6 +138,7 @@ fn run_full_page(sock: PathBuf, args: ScreenshotArgs, format: Format) -> Result<
             session_id: args.session.clone(),
             tab_id: args.tab_id,
             timeout_ms: Some(timeout),
+            virtualized: args.virtualized,
         }),
         Duration::from_millis(u64::from(timeout) + 5_000),
     )?;
@@ -161,6 +166,8 @@ fn run_full_page(sock: PathBuf, args: ScreenshotArgs, format: Format) -> Result<
                 "path": out.to_string_lossy(),
                 "byte_size": reply.byte_size,
                 "scope": reply.scope,
+                "complete": reply.complete,
+                "termination": reply.termination,
             });
             println!(
                 "{}",
@@ -170,6 +177,9 @@ fn run_full_page(sock: PathBuf, args: ScreenshotArgs, format: Format) -> Result<
         Format::Human => {
             println!("{}", out.display());
             print_dialog_summaries(&reply.dialogs);
+            if !reply.complete {
+                println!("incomplete virtualized capture: {}", reply.termination.as_deref().unwrap_or("unknown"));
+            }
         }
     }
     Ok(())
@@ -349,6 +359,8 @@ mod tests {
         assert!(parse(&["--timeout", "5m"]).is_err());
         assert!(parse(&["--scope", "current"]).is_err());
         assert!(parse(&["--full-page", "--scope", "current"]).is_ok());
+        assert!(parse(&["--full-page", "--virtualized"]).is_ok());
+        assert!(parse(&["--virtualized"]).is_err());
         assert!(parse(&["--full-page", "--scope", "invalid"]).is_err());
         assert!(parse(&["--full-page", "--timeout", "0ms"]).is_err());
     }

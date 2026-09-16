@@ -10,7 +10,13 @@ import {
 export function createPageCapture(onCancel: (id: string, reason: CaptureCancelReason) => void) {
   let task: ReturnType<typeof prepare> | undefined;
 
-  function prepare(id: string, label: string, cancelLabel: string, scope: CaptureScope = "follow") {
+  function prepare(
+    id: string,
+    label: string,
+    cancelLabel: string,
+    scope: CaptureScope = "follow",
+    virtualizedMode = false,
+  ) {
     const limit = scope === "current" ? measure().height : Infinity;
     const controller = new AbortController();
     const original = { x: window.scrollX, y: window.scrollY };
@@ -57,6 +63,10 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
     let lastMutation = bottomSince;
     let lastHeight = 0;
     let wasBusy = false;
+    let virtualizedContainer: HTMLElement | null = null;
+    let virtualizedOriginalTop: number | undefined;
+    let virtualizedTargetY = 0;
+    let virtualizedLastTop = -1;
     const loading = new Set<Element>();
     const footers = new Set<Element>();
     const loadingText =
@@ -183,6 +193,8 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
         if (element.getAttribute("style") === "") element.removeAttribute("style");
       }
       window.scrollTo({ left: original.x, top: original.y, behavior: "instant" });
+      if (virtualizedContainer && virtualizedOriginalTop !== undefined)
+        virtualizedContainer.scrollTop = virtualizedOriginalTop;
       style.remove();
     }
 
@@ -242,6 +254,86 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
     function measureRange(): PageMetrics {
       const metrics = measure();
       return { ...metrics, height: Math.min(metrics.height, limit) };
+    }
+
+    function findVirtualizedContainer(): HTMLElement | null {
+      const roles = "[role=list],[role=listbox],[role=grid],[role=tree],[role=table]";
+      return (
+        Array.from(document.querySelectorAll<HTMLElement>(roles)).find((element) => {
+          const style = getComputedStyle(element);
+          return (
+            element.scrollHeight > element.clientHeight + 1 &&
+            /(auto|scroll|overlay)/.test(`${style.overflowY} ${style.overflow}`)
+          );
+        }) ?? null
+      );
+    }
+
+    function virtualizedFingerprint(element: HTMLElement, index: number): string {
+      for (const key of [
+        "data-id",
+        "data-key",
+        "data-item-id",
+        "data-testid",
+        "aria-posinset",
+        "data-index",
+        "id",
+        "href",
+      ]) {
+        const value = element.getAttribute(key)?.trim();
+        if (value) return `${key}:${value}`;
+      }
+      const text = element.textContent?.replace(/\s+/g, " ").trim().toLowerCase();
+      if (text) return `semantic:${element.getAttribute("role") ?? ""}|${text}`;
+      return `unstable-dom:${index}`;
+    }
+
+    function virtualizedWindow(): PageMetrics {
+      virtualizedContainer ??= findVirtualizedContainer();
+      if (!virtualizedContainer) throw new ScreenshotError("unsupported");
+      virtualizedOriginalTop ??= virtualizedContainer.scrollTop;
+      const container = virtualizedContainer;
+      const itemSelector = "[role=listitem],[role=option],[role=row],[role=treeitem]";
+      const items = Array.from(container.querySelectorAll<HTMLElement>(itemSelector)).filter(
+        (item) =>
+          item.closest("[role=list],[role=listbox],[role=grid],[role=tree],[role=table]") ===
+          container,
+      );
+      const atEnd = container.scrollTop + container.clientHeight >= container.scrollHeight - 1;
+      const hasLoading =
+        container.matches('[aria-busy="true"]') || !!container.querySelector('[aria-busy="true"]');
+      const metrics = measureRange();
+      virtualizedLastTop = container.scrollTop;
+      return {
+        ...metrics,
+        virtualized: {
+          items: items.map((item, index) => ({ fingerprint: virtualizedFingerprint(item, index) })),
+          complete: atEnd && !hasLoading,
+          advance: atEnd ? "end-of-list" : "advanced",
+          sourceY: 0,
+          targetY: virtualizedTargetY,
+          height: Math.max(container.clientHeight, window.innerHeight),
+          containerIdentity: container.id
+            ? `id:${container.id}`
+            : `role:${container.getAttribute("role") ?? "list"}`,
+          ...(hasLoading ? { reason: "loading" } : {}),
+        },
+      };
+    }
+
+    function advanceVirtualized(): PageMetrics {
+      virtualizedContainer ??= findVirtualizedContainer();
+      if (!virtualizedContainer) throw new ScreenshotError("unsupported");
+      const container = virtualizedContainer;
+      const step = Math.max(1, Math.floor(container.clientHeight * 0.85));
+      const next = Math.min(
+        container.scrollTop + step,
+        container.scrollHeight - container.clientHeight,
+      );
+      if (next <= virtualizedLastTop + 0.5) return virtualizedWindow();
+      container.scrollTop = next;
+      virtualizedTargetY += step;
+      return virtualizedWindow();
     }
 
     function inspect(): PageMetrics {
@@ -361,6 +453,14 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
       move,
       measure: measureRange,
       inspect,
+      virtualizedRead: () => {
+        if (!virtualizedMode) throw new ScreenshotError("unsupported");
+        return virtualizedWindow();
+      },
+      virtualizedAdvance: () => {
+        if (!virtualizedMode) throw new ScreenshotError("unsupported");
+        return advanceVirtualized();
+      },
       touch,
       signal: controller.signal,
       pause(value: boolean) {
@@ -396,7 +496,13 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
       if (request.action === "probe") return measure();
       if (request.action === "begin") {
         if (task && !task.signal.aborted) throw new ScreenshotError("busy");
-        task = prepare(request.id, request.label, request.cancelLabel, request.scope);
+        task = prepare(
+          request.id,
+          request.label,
+          request.cancelLabel,
+          request.scope,
+          request.virtualized,
+        );
         return task.measure();
       }
       if (!task || task.id !== request.id) throw new ScreenshotError("interrupted");
@@ -407,6 +513,8 @@ export function createPageCapture(onCancel: (id: string, reason: CaptureCancelRe
       }
       task.signal.throwIfAborted();
       task.touch();
+      if (request.action === "virtualized-read") return task.virtualizedRead();
+      if (request.action === "virtualized-advance") return task.virtualizedAdvance();
       if (request.action === "pause") task.pause(request.paused);
       if (request.action === "move") return task.move(request.y, request.capture, request.final);
       return task.inspect();

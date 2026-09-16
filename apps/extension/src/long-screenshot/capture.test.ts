@@ -108,10 +108,15 @@ describe("capture lifecycle", () => {
           };
         },
         advance: async () => "advanced" as const,
-        fingerprint: (item) => item,
+        fingerprint: (item) => String(item),
       },
     });
-    expect(result).toMatchObject({ width: 1630, height: 1800, complete: true, termination: "complete" });
+    expect(result).toMatchObject({
+      width: 1630,
+      height: 3600,
+      complete: true,
+      termination: "complete",
+    });
     expect(reads).toBe(2);
     expect(h.commands.at(-1)).toEqual({ action: "finish" });
   });

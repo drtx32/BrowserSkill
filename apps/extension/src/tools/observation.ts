@@ -990,6 +990,7 @@ export async function captureVomObservation(
           performed: hoverProbes.performed,
           revealedContent: hoverProbes.revealedContent,
         },
+        virtualizedLists: decoratedScene.virtualizedLists,
       }),
       visualOutput,
     };
@@ -1015,6 +1016,7 @@ export async function captureVomObservation(
       performed: hoverProbes.performed,
       revealedContent: hoverProbes.revealedContent,
     },
+    virtualizedLists: decoratedScene.virtualizedLists,
   });
 }
 
@@ -1091,6 +1093,9 @@ async function handleVomObservation(
       if (isRpcError(page)) return page;
       return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
         ...page,
+        ...(observation.virtualizedLists?.length
+          ? { virtualized_lists: observation.virtualizedLists }
+          : {}),
         ...(observation.hoverProbe?.performed
           ? {
               hover_probe: {
@@ -1137,6 +1142,9 @@ async function handleVomObservation(
       ref_count: observation.refs.length,
       tab_id: target.tabId,
       truncated: observation.truncated,
+      ...(toolName === "observe" && observation.virtualizedLists?.length
+        ? { virtualized_lists: observation.virtualizedLists }
+        : {}),
       ...(toolName === "observe" && observation.hoverProbe?.performed
         ? {
             hover_probe: {

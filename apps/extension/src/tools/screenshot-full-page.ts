@@ -155,6 +155,7 @@ export async function handleFullPageScreenshot(
   let frames = 0;
   let progress = 0;
   let source: Awaited<ReturnType<typeof openScreenshotSource>> | undefined;
+  let captureResult: Awaited<ReturnType<typeof capturePage>> | undefined;
   const cursor = markDialogCursor(deps.cdp, target.tabId);
   try {
     await deps.exports.prepare();
@@ -192,7 +193,7 @@ export async function handleFullPageScreenshot(
           },
         );
         phase = "capturing";
-        await capturePage({
+        captureResult = await capturePage({
           page: (command) => {
             if (command.action !== "finish") phase = `page ${command.action}`;
             return client.page(command);
@@ -215,9 +216,35 @@ export async function handleFullPageScreenshot(
           },
           label: i18n.t("longScreenshot.pageProgress", { ns: "extension" }),
           cancelLabel: i18n.t("longScreenshot.cancel", { ns: "extension" }),
+          ...(params.virtualized
+            ? {
+                virtualized: {
+                  read: async (segment: number) => {
+                    const metrics = await client.page({ action: "virtualized-read" });
+                    const window = metrics.virtualized;
+                    if (!window) throw new ScreenshotError("unsupported");
+                    return {
+                      items: window.items,
+                      complete: window.complete,
+                      metrics,
+                      sourceY: window.sourceY,
+                      targetY: window.targetY,
+                      height: window.height,
+                    };
+                  },
+                  advance: async () => {
+                    const metrics = await client.page({ action: "virtualized-advance" });
+                    return metrics.virtualized?.advance ?? "failed";
+                  },
+                  fingerprint: (item: unknown) => (item as { fingerprint: string }).fingerprint,
+                },
+              }
+            : {}),
         });
       },
     );
+    if (params.virtualized && !captureResult) throw new ScreenshotError("captureFailed");
+    const virtualizedCapture = captureResult;
     controller.signal.throwIfAborted();
     await writer.finish();
     phase = "encoding";
@@ -233,6 +260,13 @@ export async function handleFullPageScreenshot(
       format: "png" as const,
       tab_id: target.tabId,
       byte_size: file.size,
+      complete:
+        params.virtualized && virtualizedCapture && "complete" in virtualizedCapture
+          ? virtualizedCapture.complete
+          : true,
+      ...(params.virtualized && virtualizedCapture && "complete" in virtualizedCapture
+        ? { termination: virtualizedCapture.termination }
+        : {}),
     });
   } catch (error) {
     const reason = controller.signal.aborted ? controller.signal.reason : error;

@@ -369,6 +369,7 @@ export interface ScreenshotFullPageParams {
   session_id: string;
   tab_id?: number;
   timeout_ms?: number;
+  virtualized?: boolean;
 }
 export interface ScreenshotFullPageResult {
   scope?: "follow" | "current";
@@ -378,6 +379,8 @@ export interface ScreenshotFullPageResult {
   format: "png";
   tab_id: number;
   byte_size: number;
+  complete?: boolean;
+  termination?: string;
   dialogs?: JavaScriptDialogInfo[];
 }
 export interface ScreenshotReadParams {
@@ -434,6 +437,13 @@ export interface ObserveResult extends SnapshotResult {
       confidence?: string;
     }>;
   };
+  virtualized_lists?: Array<{
+    container_identity: string;
+    completeness: "partial" | "unknown";
+    reason: string;
+    visible_count: number;
+    total_count?: number;
+  }>;
 }
 
 export interface GetHtmlParams {
