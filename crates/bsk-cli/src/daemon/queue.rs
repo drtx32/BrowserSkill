@@ -469,7 +469,7 @@ async fn dispatch_with_sender(
             mpsc::error::TrySendError::Closed(_) => DispatchError::QueueClosed,
         });
     }
-    // Lifecycle teardown, wheel input and effect-aware transfers keep the worker busy
+    // Lifecycle teardown, native input and effect-aware transfers keep the worker busy
     // for bounded compensation after their original deadline. Keep the outer
     // waiter alive for the same grace period so it cannot abandon reconciliation.
     let response_grace = if lifecycle_cancellable || deadline_cleanup {
@@ -668,6 +668,19 @@ async fn forward_one(
                 // before cancellation. Preserve its confirmed result.
                 return Ok(value.clone());
             }
+            if is_native_input(&job.method) {
+                if let ResponseBody::Err(err) = &resp.body
+                    && !matches!(err.code, ErrorCode::Cancelled | ErrorCode::UserAborted)
+                {
+                    return Err(err.clone());
+                }
+                let mut error = cancelled_error(
+                    job.inflight.as_deref(),
+                    "tool dispatch cancelled after extension cleanup",
+                );
+                error.data = Some(input_effect_data(Some(&resp.body)));
+                return Err(error);
+            }
             // File transfer commits are irreversible. A late cancel cannot
             // overwrite a confirmed success, and an unknown transfer effect
             // must remain explicit so callers do not retry or release upload
@@ -708,6 +721,18 @@ async fn forward_one(
             }
         }
         WaitOutcome::TimedOutAfterResponse(resp) => match resp.body {
+            body if is_native_input(&job.method) => {
+                if let ResponseBody::Err(err) = &body
+                    && !matches!(err.code, ErrorCode::Cancelled | ErrorCode::UserAborted)
+                {
+                    return Err(err.clone());
+                }
+                return Err(RpcError {
+                    code: ErrorCode::Timeout,
+                    message: format!("tool RPC timed out after {:?}", job.timeout),
+                    data: Some(input_effect_data(Some(&body))),
+                });
+            }
             ResponseBody::Ok(value)
                 if matches!(
                     job.method,
@@ -760,7 +785,11 @@ async fn forward_one(
                     "cancelled tool did not finish cleanup within {:?}",
                     job.cancel_cleanup_timeout
                 ),
-                data: Some(serde_json::json!({ "reason": "cancel_cleanup_timeout" })),
+                data: Some(if is_native_input(&job.method) {
+                    input_effect_data(None)
+                } else {
+                    serde_json::json!({ "reason": "cancel_cleanup_timeout" })
+                }),
             });
         }
         WaitOutcome::TimeoutCleanupFailed => {
@@ -775,18 +804,19 @@ async fn forward_one(
                     data: Some(serde_json::json!({ "reason": "confirmation_timeout" })),
                 });
             }
-            if matches!(
-                job.method,
-                Method::ToolWheel | Method::ToolScreenshotFullPage
-            ) {
+            if is_native_input(&job.method) || job.method == Method::ToolScreenshotFullPage {
                 return Err(RpcError {
                     code: ErrorCode::Timeout,
-                    message: if job.method == Method::ToolWheel {
-                        "wheel timed out and extension cleanup could not be confirmed".into()
+                    message: if is_native_input(&job.method) {
+                        "input timed out and extension cleanup could not be confirmed".into()
                     } else {
                         "full-page screenshot timed out and extension cleanup could not be confirmed".into()
                     },
-                    data: Some(serde_json::json!({ "reason": "cancel_cleanup_timeout" })),
+                    data: Some(if is_native_input(&job.method) {
+                        input_effect_data(None)
+                    } else {
+                        serde_json::json!({ "reason": "cancel_cleanup_timeout" })
+                    }),
                 });
             }
             return Err(unknown_transfer_error(
@@ -812,7 +842,7 @@ async fn forward_one(
             return Err(RpcError {
                 code: ErrorCode::ProtocolError,
                 message: "transport closed mid-call".into(),
-                data: None,
+                data: is_native_input(&job.method).then(|| input_effect_data(None)),
             });
         }
         WaitOutcome::Timeout => {
@@ -831,7 +861,7 @@ async fn forward_one(
             return Err(RpcError {
                 code: ErrorCode::Timeout,
                 message: format!("tool RPC timed out after {:?}", job.timeout),
-                data: None,
+                data: is_native_input(&job.method).then(|| input_effect_data(None)),
             });
         }
     };
@@ -841,17 +871,37 @@ async fn forward_one(
     }
 }
 
-// Wheel and full-page screenshots must cancel at the daemon deadline: local
+fn is_native_input(method: &Method) -> bool {
+    matches!(
+        method,
+        Method::ToolClick | Method::ToolPress | Method::ToolWheel
+    )
+}
+
+// Preserve the extension's knowledge of whether input was sent. A missing
+// cleanup response cannot establish that replaying the input would be safe.
+fn input_effect_data(response: Option<&ResponseBody>) -> Value {
+    if let Some(ResponseBody::Err(err)) = response
+        && let Some(data) = &err.data
+        && matches!(
+            data.get("effect_state").and_then(Value::as_str),
+            Some("none" | "unknown")
+        )
+    {
+        return data.clone();
+    }
+    serde_json::json!({ "reason": "input_outcome_unknown", "effect_state": "unknown" })
+}
+
+// Native inputs and full-page screenshots must cancel at the daemon deadline: local
 // deadlines cannot account for transit delays. Keep the queue held for cleanup.
 // Human interaction deadlines also dismiss their pending UI before releasing the queue.
 fn waits_for_deadline_cleanup(method: &Method) -> bool {
     matches!(
         method,
-        Method::ToolWheel
-            | Method::ToolScreenshotFullPage
-            | Method::ToolTabBorrow
-            | Method::ToolRequestHelp
-    ) || is_effect_aware_transfer(method)
+        Method::ToolScreenshotFullPage | Method::ToolTabBorrow | Method::ToolRequestHelp
+    ) || is_native_input(method)
+        || is_effect_aware_transfer(method)
 }
 
 fn unknown_borrow_error(code: ErrorCode) -> RpcError {
