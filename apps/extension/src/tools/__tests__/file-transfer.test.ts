@@ -735,6 +735,67 @@ describe("file transfer tools", () => {
     });
   });
 
+  it("captures a unique download matching a trigger-authorized URL", async () => {
+    const onCreated = fakeEvent<(item: chrome.downloads.DownloadItem) => void>();
+    const onChanged = fakeEvent<(delta: chrome.downloads.DownloadDelta) => void>();
+    const onDeterminingFilename =
+      fakeEvent<
+        (
+          item: chrome.downloads.DownloadItem,
+          suggest: (suggestion?: chrome.downloads.DownloadFilenameSuggestion) => void,
+        ) => void | true
+      >();
+    const initial = {
+      id: 18,
+      url: "https://example.test/popup.bin",
+      finalUrl: "https://example.test/popup.bin",
+      filename: "popup.bin",
+      state: "in_progress",
+      fileSize: -1,
+      totalBytes: 4,
+      mime: "application/octet-stream",
+      danger: "safe",
+    } as chrome.downloads.DownloadItem;
+    const complete = {
+      ...initial,
+      filename: "/profile/Downloads/BrowserSkill/tr_2/popup.bin",
+      state: "complete",
+      fileSize: 4,
+    } as chrome.downloads.DownloadItem;
+    const downloads: DownloadsApi = {
+      onCreated,
+      onChanged,
+      onDeterminingFilename,
+      search: vi.fn(async () => [complete]),
+      cancel: vi.fn(async () => {}),
+      removeFile: vi.fn(async () => {}),
+    };
+    const cdp: CdpRunner = {
+      send: vi.fn(async () => ({})) as unknown as CdpRunner["send"],
+      onEvent: () => ({ dispose: vi.fn() }),
+    };
+
+    const result = await captureBrowserDownload({
+      cdp,
+      target: { tabId: 4 },
+      expectedUrl: initial.url,
+      downloads,
+      browserRelativeDir: "BrowserSkill/tr_2",
+      timeoutMs: 200,
+      trigger: async () => {
+        await new Promise<void>((resolve) => {
+          onDeterminingFilename.emit(initial, () => resolve());
+        });
+        onCreated.emit(complete);
+        return { tab_id: 4, x: 10, y: 10 };
+      },
+    });
+
+    expect(result).toMatchObject({
+      item: { id: 18, filename: complete.filename, state: "complete" },
+    });
+  });
+
   it("correlates a filename candidate that arrives before the CDP intent", async () => {
     const onCreated = fakeEvent<(item: chrome.downloads.DownloadItem) => void>();
     const onChanged = fakeEvent<(delta: chrome.downloads.DownloadDelta) => void>();
