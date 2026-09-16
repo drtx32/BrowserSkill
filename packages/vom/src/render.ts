@@ -7,11 +7,11 @@ import type {
   RenderedRef,
   VomNode,
   VomOptions,
-  VomResult,
-  VomScene,
   VomProjection,
   VomProjectionNode,
   VomRelation,
+  VomResult,
+  VomScene,
 } from "./types";
 
 const SKIP_ROLES = new Set(["generic", "none", "presentation", "inlinetextbox"]);
@@ -811,6 +811,31 @@ export interface RenderRow {
   minimal?: string;
 }
 
+function stableNodeId(node: VomNode): string | undefined {
+  const attrs = node.attrs ?? {};
+  for (const key of ["id", "data-testid", "data-test", "data-key", "aria-controls", "name"]) {
+    if (attrs[key]) return `${key}=${attrs[key]}`;
+  }
+  return undefined;
+}
+
+function semanticPath(node: VomNode, state: RenderState): string {
+  const parts: string[] = [];
+  let current: VomNode | undefined = node;
+  let depth = 0;
+  while (current && depth++ < 8) {
+    const label =
+      cleaned(current.name) ??
+      cleaned(current.text) ??
+      stableNodeId(current) ??
+      current.role ??
+      current.tag;
+    parts.unshift(label ?? current.tag);
+    current = current.parentId === null ? undefined : state.nodesById.get(current.parentId);
+  }
+  return parts.join("/");
+}
+
 function pushRenderChildren(
   stack: Array<{ node: VomNode; depth: number }>,
   children: readonly VomNode[],
@@ -878,6 +903,16 @@ function* renderTreeRows(
               ...(node.role ? { role: node.role } : {}),
               ...(label ? { name: label } : {}),
               ...(context.length > 0 ? { ctx: context.join(" > ") } : {}),
+              identity: {
+                ...(node.role ? { role: node.role } : {}),
+                ...(label ? { name: label } : {}),
+                ...(node.text ? { text: cleaned(node.text) } : {}),
+                ...(context.length > 0 ? { context: context.join(" > ") } : {}),
+                ...(node.frameId ? { frameId: node.frameId } : {}),
+                ...(stableNodeId(node) ? { stableId: stableNodeId(node) } : {}),
+                path: semanticPath(node, state),
+                layer: "active",
+              },
               line: 0,
             },
           }
@@ -1617,6 +1652,15 @@ export function renderCompactVom(scene: VomScene, options: VomOptions = {}): Vom
         ...(node.frameId ? { frameId: node.frameId } : {}),
         ...(node.role ? { role: node.role } : {}),
         ...(node.name ? { name: node.name } : {}),
+        identity: {
+          ...(node.role ? { role: node.role } : {}),
+          ...(node.name ? { name: node.name } : {}),
+          ...(node.frameId ? { frameId: node.frameId } : {}),
+          ...(node.contextScopeId ? { context: node.contextScopeId } : {}),
+          ...(node.title ? { stableId: `title=${node.title}` } : {}),
+          path: node.parentId !== undefined ? String(node.parentId) : undefined,
+          layer: node.layer,
+        },
         line: lines.length - 1,
       });
     }

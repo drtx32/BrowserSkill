@@ -240,13 +240,6 @@ export default defineBackground(() => {
   void sessionsLive.refresh();
   const cleanupAfterDisconnect = createDisconnectCleanup({
     manager: sessions,
-    // Same contract as the dispatcher's `tool.session_stop`: without these
-    // deps the agent-tab cleanup and the window-release path are dead code.
-    sessionStopDeps: {
-      cdp,
-      tabManagement: { tabs: chromeTabMutationApi },
-      tabsQuery: chromeTabsApi,
-    },
     onSessionsChanged: () => {
       void sessionsLive.syncFromManager();
     },

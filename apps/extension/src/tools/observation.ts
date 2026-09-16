@@ -1143,23 +1143,28 @@ async function handleVomObservation(
     const targetByFrameId = new Map(
       observation.frames.map((frame) => [frame.frameId, frame.target]),
     );
-    ctx.refStore.replace(
-      observation.refs.map((ref) => {
-        const refTarget = ref.frameId ? targetByFrameId.get(ref.frameId) : undefined;
-        return [
-          ref.ref,
-          {
-            ...(ref.name ? { name: ref.name } : {}),
-            backendNodeId: ref.backendNodeId,
-            tabId: target.tabId,
-            ...(ref.frameId ? { frameId: ref.frameId } : {}),
-            ...(refTarget?.sessionId ? { cdpSessionId: refTarget.sessionId } : {}),
-          },
-        ] as const;
-      }),
+    const refEntries = observation.refs.map((ref) => {
+      const refTarget = ref.frameId ? targetByFrameId.get(ref.frameId) : undefined;
+      return [
+        ref.ref,
+        {
+          ...(ref.name ? { name: ref.name } : {}),
+          backendNodeId: ref.backendNodeId,
+          tabId: target.tabId,
+          ...(ref.frameId ? { frameId: ref.frameId } : {}),
+          ...(refTarget?.sessionId ? { cdpSessionId: refTarget.sessionId } : {}),
+          ...(ref.identity ? { identity: ref.identity } : {}),
+        },
+      ] as const;
+    });
+    const refMapping = ctx.refStore.replaceStable(refEntries);
+    const text = observation.text.replace(
+      /@e\d+\b/g,
+      (token) => `@${refMapping.get(token.slice(1)) ?? token.slice(1)}`,
     );
+    for (const ref of observation.refs) ref.ref = refMapping.get(ref.ref) ?? ref.ref;
     return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
-      text: observation.text,
+      text,
       ref_count: observation.refs.length,
       tab_id: target.tabId,
       truncated: observation.truncated,

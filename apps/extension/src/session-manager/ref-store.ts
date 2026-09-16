@@ -1,3 +1,4 @@
+import type { InteractionLayer } from "@browser-skill/vom";
 import type { VisualCandidate } from "@/tools/vom/visual-discovery";
 
 /** Session-local refs describe the latest observation. Reusing eN does not identify
@@ -12,6 +13,18 @@ export interface DomRefEntry {
   frameId?: string;
   cdpSessionId?: string;
   generation: number;
+  identity?: RefIdentity;
+}
+
+export interface RefIdentity {
+  role?: string;
+  name?: string;
+  text?: string;
+  context?: string;
+  frameId?: string;
+  layer?: InteractionLayer;
+  stableId?: string;
+  path?: string;
 }
 
 export interface VisualRefInput {
@@ -30,12 +43,20 @@ export type RefInput =
       tabId: number;
       frameId?: string;
       cdpSessionId?: string;
+      identity?: RefIdentity;
     };
 
 export class RefStore {
   private map = new Map<string, RefEntry>();
+  private readonly logical = new Map<string, { ref: string; entry: RefEntry; used: number }>();
   private generation = 0;
   private readonly documents = new Map<number, number>();
+  private readonly maxLogicalEntries: number;
+  private clock = 0;
+
+  constructor(options: { maxLogicalEntries?: number } = {}) {
+    this.maxLogicalEntries = Math.max(32, options.maxLogicalEntries ?? 512);
+  }
 
   get revision(): number {
     return this.generation;
@@ -43,6 +64,11 @@ export class RefStore {
 
   size(): number {
     return this.map.size;
+  }
+
+  /** Number of retained semantic identities (bounded by construction). */
+  logicalSizeForTest(): number {
+    return this.logical.size;
   }
 
   isEmpty(): boolean {
@@ -65,11 +91,38 @@ export class RefStore {
    * Used after every fresh `tool.snapshot`.
    */
   replace(entries: Iterable<readonly [string, RefInput]>): void {
+    this.replaceStable(entries);
+  }
+
+  replaceStable(entries: Iterable<readonly [string, RefInput]>): Map<string, string> {
     const generation = this.generation + 1;
     const next = new Map<string, RefEntry>();
-    for (const [ref, input] of entries) next.set(normaliseRef(ref), this.entry(input, generation));
+    const mapping = new Map<string, string>();
+    const used = new Set<string>();
+    const seenKeys = new Set<string>();
+    for (const [rawRef, input] of entries) {
+      const candidate = this.entry(input, generation);
+      const generatedRef = normaliseRef(rawRef);
+      const key =
+        candidate.kind === "dom" ? identityKey(candidate.identity, candidate.tabId) : undefined;
+      const duplicate = key !== undefined && seenKeys.has(key);
+      if (key) seenKeys.add(key);
+      const prior = key && !duplicate ? this.logical.get(key) : undefined;
+      let logicalRef =
+        prior && sameScope(prior.entry, candidate) && !used.has(prior.ref)
+          ? prior.ref
+          : generatedRef;
+      while (used.has(logicalRef)) logicalRef = this.allocateRef(used);
+      used.add(logicalRef);
+      mapping.set(generatedRef, logicalRef);
+      next.set(logicalRef, candidate);
+      if (key && !duplicate)
+        this.logical.set(key, { ref: logicalRef, entry: candidate, used: ++this.clock });
+    }
     this.map = next;
     this.generation = generation;
+    this.gc(used);
+    return mapping;
   }
 
   set(
@@ -106,12 +159,20 @@ export class RefStore {
         changed = true;
       }
     }
+    for (const [key, value] of this.logical) {
+      const owner =
+        value.entry.kind === "dom"
+          ? value.entry.tabId
+          : value.entry.candidate.document.target.tabId;
+      if (owner === tabId) this.logical.delete(key);
+    }
     if (changed) this.generation++;
   }
 
   clear(): void {
     this.generation++;
     this.map.clear();
+    this.logical.clear();
   }
 
   entries(): IterableIterator<[string, RefEntry]> {
@@ -149,9 +210,58 @@ export class RefStore {
       tabId: input.tabId,
       ...(input.frameId ? { frameId: input.frameId } : {}),
       ...(input.cdpSessionId ? { cdpSessionId: input.cdpSessionId } : {}),
+      ...(input.identity ? { identity: input.identity } : {}),
       generation,
     };
   }
+
+  private allocateRef(used: Set<string>): string {
+    let n = 1;
+    while (used.has(`e${n}`) || this.map.has(`e${n}`)) n++;
+    return `e${n}`;
+  }
+
+  private gc(current: Set<string>): void {
+    for (const value of this.logical.values())
+      if (current.has(value.ref)) value.used = ++this.clock;
+    while (this.logical.size > this.maxLogicalEntries) {
+      let oldest: string | undefined;
+      let age = Infinity;
+      for (const [key, value] of this.logical)
+        if (value.used < age) {
+          age = value.used;
+          oldest = key;
+        }
+      if (!oldest) break;
+      this.logical.delete(oldest);
+    }
+  }
+}
+
+function sameScope(a: RefEntry, b: RefEntry): boolean {
+  if (a.kind !== "dom" || b.kind !== "dom") return false;
+  if (a.tabId !== b.tabId || a.cdpSessionId !== b.cdpSessionId) return false;
+  if (a.frameId === b.frameId) return true;
+  // A same-session soft frame refresh may allocate a new frame id. Preserve
+  // only when an application-stable identifier agrees; otherwise frame
+  // changes remain an intentional scope boundary.
+  return Boolean(
+    a.identity?.stableId && b.identity?.stableId && a.identity.stableId === b.identity.stableId,
+  );
+}
+
+function identityKey(identity: RefIdentity | undefined, tabId: number | null): string | undefined {
+  if (!identity || (identity.layer !== undefined && identity.layer !== "active")) return undefined;
+  const values = [
+    identity.stableId,
+    identity.path,
+    identity.role,
+    identity.name,
+    identity.text,
+    identity.context,
+  ];
+  if (values.every((value) => !value)) return undefined;
+  return `${tabId ?? "?"}|${values.map((value) => value ?? "").join("\u0001")}`;
 }
 
 /** Canonical RefStore key: `@e3` and `e3` both become `e3`. */
