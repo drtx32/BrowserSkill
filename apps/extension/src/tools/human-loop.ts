@@ -24,8 +24,8 @@ import type {
   HelpTarget,
   RequestHelpParams,
   RequestHelpResult,
-  type HelpCheckpointSummary,
-  type HelpStateDiff,
+  HelpCheckpointSummary,
+  HelpStateDiff,
   ResolvedTarget,
   RpcError,
 } from "@/transport/types";
