@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { capturePage, sameLayout, sliceForFrame } from "./capture";
+import { capturePage, captureVirtualizedPage, sameLayout, sliceForFrame } from "./capture";
 import { frameSignature, isStaleFrame } from "./frame-freshness";
 import { type PageCommand, type PageMetrics, ScreenshotError } from "./types";
 
@@ -90,6 +90,32 @@ function harness() {
 }
 
 describe("capture lifecycle", () => {
+  it("uses the bounded semantic traversal for segmented visual windows", async () => {
+    const h = harness();
+    let reads = 0;
+    const result = await captureVirtualizedPage({
+      ...h.deps,
+      virtualized: {
+        read: async (segment) => {
+          reads++;
+          return {
+            items: segment === 0 ? ["a", "b"] : ["b", "c"],
+            complete: segment === 1,
+            metrics,
+            sourceY: 0,
+            targetY: segment * 600,
+            height: 1200,
+          };
+        },
+        advance: async () => "advanced" as const,
+        fingerprint: (item) => item,
+      },
+    });
+    expect(result).toMatchObject({ width: 1630, height: 1800, complete: true, termination: "complete" });
+    expect(reads).toBe(2);
+    expect(h.commands.at(-1)).toEqual({ action: "finish" });
+  });
+
   it("captures incrementally, crops scrollbars and releases every bitmap", async () => {
     const h = harness();
     const result = await capturePage(h.deps);

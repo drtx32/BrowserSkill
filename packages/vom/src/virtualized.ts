@@ -8,7 +8,7 @@ export interface VirtualizedListAnalysis {
   visibleCount: number;
   totalCount?: number;
   fingerprints: string[];
-  reason: "declared-size" | "position-gap" | "viewport-only" | "no-evidence";
+  reason: "declared-size" | "position-gap" | "incomplete-geometry" | "viewport-only" | "no-evidence";
 }
 
 export interface VirtualizedAnalysisOptions {
@@ -17,7 +17,16 @@ export interface VirtualizedAnalysisOptions {
 
 const LIST_ROLES = new Set(["list", "listbox", "grid", "tree", "table"]);
 const ITEM_ROLES = new Set(["listitem", "option", "row", "treeitem"]);
-const STABLE_ATTRIBUTES = ["data-id", "data-key", "data-item-id", "data-testid", "id", "href"];
+const STABLE_ATTRIBUTES = [
+  "data-id",
+  "data-key",
+  "data-item-id",
+  "data-testid",
+  "aria-posinset",
+  "data-index",
+  "id",
+  "href",
+];
 
 function numberAttribute(node: VomNode, name: string): number | undefined {
   const value = node.attrs?.[name];
@@ -31,7 +40,10 @@ function itemLike(node: VomNode): boolean {
   return ITEM_ROLES.has(role ?? "") || node.attrs?.["aria-posinset"] !== undefined;
 }
 
-/** Identity that survives a recycled virtualized window. */
+/**
+ * Identity that survives a recycled virtualized window. Backend ids are an
+ * unstable last resort because virtualized DOM implementations recycle them.
+ */
 export function stableItemFingerprint(
   node: Pick<VomNode, "backendNodeId" | "id" | "role" | "name" | "text" | "href" | "attrs">,
 ): string {
@@ -40,12 +52,12 @@ export function stableItemFingerprint(
     const value = attrs[key]?.trim();
     if (value) return `${key}:${value}`;
   }
-  const semantic = [node.role, node.name, node.text, node.href]
+  const semanticParts = [node.role, node.name, node.text, node.href]
     .map((value) => value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "")
-    .join("|");
-  if (semantic.replace(/\|/g, "")) return `semantic:${semantic}`;
-  if (node.backendNodeId !== undefined) return `backend:${node.backendNodeId}`;
-  return `vom:${node.id}`;
+  const semantic = semanticParts.join("|");
+  if (semanticParts.slice(1).some(Boolean)) return `semantic:${semantic}`;
+  if (node.backendNodeId !== undefined) return `unstable-backend:${node.backendNodeId}:${node.id}`;
+  return `unstable-vom:${node.id}`;
 }
 
 function childrenOf(nodes: readonly VomNode[], container: VomNode): VomNode[] {
@@ -83,15 +95,16 @@ export function analyzeVirtualizedLists(
         .map((item) => numberAttribute(item, "aria-posinset"))
         .filter((value): value is number => value !== undefined);
       const hasGap = positions.length > 1 && positions.some((value, index) => value !== positions[0] + index);
-      const viewportOnly = items.length >= minimumItems && items.every((item) => item.rect !== null);
+      const hasIncompleteGeometry = items.some((item) => item.rect === null);
+      const viewportOnly = items.length >= minimumItems && !hasIncompleteGeometry;
       const partial = (totalCount !== undefined && totalCount > items.length) || hasGap;
       return {
         containerId: container.id,
-        completeness: partial ? "partial" : viewportOnly && totalCount === undefined ? "unknown" : "complete",
+        completeness: partial || hasIncompleteGeometry ? (partial ? "partial" : "unknown") : viewportOnly && totalCount === undefined ? "unknown" : "complete",
         visibleCount: items.length,
         ...(totalCount !== undefined ? { totalCount } : {}),
         fingerprints: items.map(stableItemFingerprint),
-        reason: partial ? (totalCount !== undefined ? "declared-size" : "position-gap") : viewportOnly ? "viewport-only" : "no-evidence",
+        reason: partial ? (totalCount !== undefined ? "declared-size" : "position-gap") : hasIncompleteGeometry ? "incomplete-geometry" : viewportOnly ? "viewport-only" : "no-evidence",
       };
     });
 }
@@ -103,7 +116,7 @@ export interface VirtualizedSegment<T> {
 
 export interface CollectVirtualizedOptions<T> {
   read: (segment: number) => Promise<VirtualizedSegment<T>>;
-  advance: (segment: number) => Promise<boolean>;
+  advance: (segment: number) => Promise<VirtualizedAdvance | boolean>;
   fingerprint: (item: T) => string;
   maxSegments?: number;
   maxStalledSegments?: number;
@@ -114,8 +127,10 @@ export interface CollectVirtualizedResult<T> {
   items: T[];
   segments: number;
   complete: boolean;
-  termination: "complete" | "max-segments" | "stalled" | "aborted";
+  termination: "complete" | "max-segments" | "stalled" | "end-of-list" | "advance-failed" | "aborted";
 }
+
+export type VirtualizedAdvance = "advanced" | "end-of-list" | "failed";
 
 /** Bounded segmented collection with cross-window deduplication. */
 export async function collectVirtualizedSegments<T>(
@@ -132,15 +147,21 @@ export async function collectVirtualizedSegments<T>(
     let added = 0;
     for (const item of current.items) {
       const key = options.fingerprint(item);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      // An unstable identity is intentionally not deduplicated. Keeping a
+      // possible duplicate is safer than silently dropping a recycled row.
+      const unstable = key.startsWith("unstable-");
+      if (!unstable && seen.has(key)) continue;
+      if (!unstable) seen.add(key);
       items.push(item);
       added += 1;
     }
     if (current.complete) return { items, segments: segment + 1, complete: true, termination: "complete" };
     stalled = added === 0 ? stalled + 1 : 0;
     if (stalled >= maxStalledSegments) return { items, segments: segment + 1, complete: false, termination: "stalled" };
-    if (!(await options.advance(segment))) return { items, segments: segment + 1, complete: false, termination: "stalled" };
+    const advanced = await options.advance(segment);
+    if (advanced === "end-of-list") return { items, segments: segment + 1, complete: true, termination: "end-of-list" };
+    if (advanced === "failed" || advanced === false)
+      return { items, segments: segment + 1, complete: false, termination: "advance-failed" };
   }
   return { items, segments: maxSegments, complete: false, termination: "max-segments" };
 }
