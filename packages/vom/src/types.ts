@@ -80,7 +80,11 @@ export interface VomScene {
   rootFrameId?: string;
   surfaces?: CondSurface[];
   activeScopeBlocks?: ActiveScopeBlock[];
+  /** Completeness of list-like content represented by this observation. */
+  completeness?: VomCompleteness;
 }
+
+export type VomCompleteness = "complete" | "partial" | "unknown";
 
 export interface VomOptions {
   /** Select the agent-facing renderer; legacy remains the compatibility default. */

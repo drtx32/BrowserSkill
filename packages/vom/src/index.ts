@@ -22,6 +22,7 @@ export type {
   VomRef,
   VomResult,
   VomScene,
+  VomCompleteness,
   VomProjection,
   VomProjectionNode,
   VomRelation,
@@ -46,3 +47,15 @@ export type {
   RematchResult,
 } from "./locator";
 export type { InteractionLayer } from "./types";
+export {
+  analyzeVirtualizedLists,
+  collectVirtualizedSegments,
+  stableItemFingerprint,
+} from "./virtualized";
+export type {
+  CollectVirtualizedOptions,
+  CollectVirtualizedResult,
+  VirtualizedCompleteness,
+  VirtualizedListAnalysis,
+  VirtualizedSegment,
+} from "./virtualized";
