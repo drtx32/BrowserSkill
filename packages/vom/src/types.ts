@@ -84,9 +84,18 @@ export interface VomScene {
   activeScopeBlocks?: ActiveScopeBlock[];
   /** Completeness of list-like content represented by this observation. */
   completeness?: VomCompleteness;
+  virtualizedLists?: VomVirtualizedListEvidence[];
 }
 
 export type VomCompleteness = "complete" | "partial" | "unknown";
+
+export interface VomVirtualizedListEvidence {
+  containerIdentity: string;
+  completeness: Exclude<VomCompleteness, "complete">;
+  reason: string;
+  visibleCount: number;
+  totalCount?: number;
+}
 
 export interface VomOptions {
   /** Select the agent-facing renderer; legacy remains the compatibility default. */

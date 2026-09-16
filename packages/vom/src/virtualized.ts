@@ -4,11 +4,17 @@ export type VirtualizedCompleteness = "complete" | "partial" | "unknown";
 
 export interface VirtualizedListAnalysis {
   containerId: number;
+  containerIdentity: string;
   completeness: VirtualizedCompleteness;
   visibleCount: number;
   totalCount?: number;
   fingerprints: string[];
-  reason: "declared-size" | "position-gap" | "incomplete-geometry" | "viewport-only" | "no-evidence";
+  reason:
+    | "declared-size"
+    | "position-gap"
+    | "incomplete-geometry"
+    | "viewport-only"
+    | "no-evidence";
 }
 
 export interface VirtualizedAnalysisOptions {
@@ -27,6 +33,18 @@ const STABLE_ATTRIBUTES = [
   "id",
   "href",
 ];
+
+function containerIdentity(node: VomNode): string {
+  const attrs = node.attrs ?? {};
+  for (const key of ["data-id", "data-key", "id"]) {
+    const value = attrs[key]?.trim();
+    if (value) return `${key}:${value}`;
+  }
+  if (node.frameId && node.backendNodeId !== undefined)
+    return `frame:${node.frameId}:backend:${node.backendNodeId}`;
+  if (node.backendNodeId !== undefined) return `backend:${node.backendNodeId}`;
+  return `unstable-vom:${node.id}`;
+}
 
 function numberAttribute(node: VomNode, name: string): number | undefined {
   const value = node.attrs?.[name];
@@ -52,8 +70,9 @@ export function stableItemFingerprint(
     const value = attrs[key]?.trim();
     if (value) return `${key}:${value}`;
   }
-  const semanticParts = [node.role, node.name, node.text, node.href]
-    .map((value) => value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "")
+  const semanticParts = [node.role, node.name, node.text, node.href].map(
+    (value) => value?.replace(/\s+/g, " ").trim().toLowerCase() ?? "",
+  );
   const semantic = semanticParts.join("|");
   if (semanticParts.slice(1).some(Boolean)) return `semantic:${semantic}`;
   if (node.backendNodeId !== undefined) return `unstable-backend:${node.backendNodeId}:${node.id}`;
@@ -94,17 +113,34 @@ export function analyzeVirtualizedLists(
       const positions = items
         .map((item) => numberAttribute(item, "aria-posinset"))
         .filter((value): value is number => value !== undefined);
-      const hasGap = positions.length > 1 && positions.some((value, index) => value !== positions[0] + index);
+      const hasGap =
+        positions.length > 1 && positions.some((value, index) => value !== positions[0] + index);
       const hasIncompleteGeometry = items.some((item) => item.rect === null);
       const viewportOnly = items.length >= minimumItems && !hasIncompleteGeometry;
       const partial = (totalCount !== undefined && totalCount > items.length) || hasGap;
       return {
         containerId: container.id,
-        completeness: partial || hasIncompleteGeometry ? (partial ? "partial" : "unknown") : viewportOnly && totalCount === undefined ? "unknown" : "complete",
+        containerIdentity: containerIdentity(container),
+        completeness:
+          partial || hasIncompleteGeometry
+            ? partial
+              ? "partial"
+              : "unknown"
+            : viewportOnly && totalCount === undefined
+              ? "unknown"
+              : "complete",
         visibleCount: items.length,
         ...(totalCount !== undefined ? { totalCount } : {}),
         fingerprints: items.map(stableItemFingerprint),
-        reason: partial ? (totalCount !== undefined ? "declared-size" : "position-gap") : hasIncompleteGeometry ? "incomplete-geometry" : viewportOnly ? "viewport-only" : "no-evidence",
+        reason: partial
+          ? totalCount !== undefined
+            ? "declared-size"
+            : "position-gap"
+          : hasIncompleteGeometry
+            ? "incomplete-geometry"
+            : viewportOnly
+              ? "viewport-only"
+              : "no-evidence",
       };
     });
 }
@@ -127,7 +163,13 @@ export interface CollectVirtualizedResult<T> {
   items: T[];
   segments: number;
   complete: boolean;
-  termination: "complete" | "max-segments" | "stalled" | "end-of-list" | "advance-failed" | "aborted";
+  termination:
+    | "complete"
+    | "max-segments"
+    | "stalled"
+    | "end-of-list"
+    | "advance-failed"
+    | "aborted";
 }
 
 export type VirtualizedAdvance = "advanced" | "end-of-list" | "failed";
@@ -142,7 +184,8 @@ export async function collectVirtualizedSegments<T>(
   const items: T[] = [];
   let stalled = 0;
   for (let segment = 0; segment < maxSegments; segment += 1) {
-    if (options.signal?.aborted) return { items, segments: segment, complete: false, termination: "aborted" };
+    if (options.signal?.aborted)
+      return { items, segments: segment, complete: false, termination: "aborted" };
     const current = await options.read(segment);
     let added = 0;
     for (const item of current.items) {
@@ -155,11 +198,14 @@ export async function collectVirtualizedSegments<T>(
       items.push(item);
       added += 1;
     }
-    if (current.complete) return { items, segments: segment + 1, complete: true, termination: "complete" };
+    if (current.complete)
+      return { items, segments: segment + 1, complete: true, termination: "complete" };
     stalled = added === 0 ? stalled + 1 : 0;
-    if (stalled >= maxStalledSegments) return { items, segments: segment + 1, complete: false, termination: "stalled" };
+    if (stalled >= maxStalledSegments)
+      return { items, segments: segment + 1, complete: false, termination: "stalled" };
     const advanced = await options.advance(segment);
-    if (advanced === "end-of-list") return { items, segments: segment + 1, complete: true, termination: "end-of-list" };
+    if (advanced === "end-of-list")
+      return { items, segments: segment + 1, complete: true, termination: "end-of-list" };
     if (advanced === "failed" || advanced === false)
       return { items, segments: segment + 1, complete: false, termination: "advance-failed" };
   }

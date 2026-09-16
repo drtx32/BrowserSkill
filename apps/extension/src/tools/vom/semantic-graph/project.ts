@@ -83,10 +83,24 @@ export function projectSemanticGraph(graph: StructuredSemanticGraph): VomScene {
     : listAnalysis.some((list) => list.completeness === "unknown")
       ? "unknown"
       : undefined;
+  const virtualizedLists = listAnalysis.flatMap((list) =>
+    list.completeness === "complete"
+      ? []
+      : [
+          {
+            containerIdentity: list.containerIdentity,
+            completeness: list.completeness,
+            reason: list.reason,
+            visibleCount: list.visibleCount,
+            ...(list.totalCount !== undefined ? { totalCount: list.totalCount } : {}),
+          },
+        ],
+  );
   return {
     viewport: graph.viewport,
     nodes,
     rootFrameId: graph.rootFrameId,
     ...(completeness ? { completeness } : {}),
+    ...(virtualizedLists.length ? { virtualizedLists } : {}),
   };
 }

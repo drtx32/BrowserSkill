@@ -129,6 +129,37 @@ describe("page capture cleanup", () => {
     await expect(send({ action: "finish" })).rejects.toThrow("interrupted");
     await expect(send({ action: "move", y: 900, capture: true })).rejects.toThrow("interrupted");
   });
+
+  it("uses semantic windows for a nested virtualized container and restores its scroll", async () => {
+    const list = document.createElement("div");
+    list.id = "results";
+    list.setAttribute("role", "list");
+    list.style.overflowY = "auto";
+    const item = document.createElement("div");
+    item.setAttribute("role", "listitem");
+    item.setAttribute("data-id", "row-1");
+    item.textContent = "Result";
+    list.append(item);
+    document.body.append(list);
+    Object.defineProperties(list, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1200 },
+      scrollTop: { configurable: true, writable: true, value: 120 },
+    });
+
+    await send({ action: "begin", label: "Capture", cancelLabel: "Cancel", virtualized: true });
+    await expect(send({ action: "virtualized-read" })).resolves.toMatchObject({
+      virtualized: {
+        complete: false,
+        containerIdentity: "id:results",
+        items: [{ fingerprint: "data-id:row-1" }],
+      },
+    });
+    await send({ action: "virtualized-advance" });
+    await send({ action: "finish" });
+    expect(list.scrollTop).toBe(120);
+  });
+
   it("waits for loading above a tall footer and a quiet bottom before finalizing", async () => {
     const footer = document.createElement("footer");
     const loader = document.createElement("span");
