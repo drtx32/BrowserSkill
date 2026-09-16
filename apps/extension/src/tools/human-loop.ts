@@ -19,13 +19,13 @@ import {
 import type { InteractionPreferenceStore } from "@/lib/interaction-preferences";
 import type { SessionContext, SessionManager } from "@/session-manager/manager";
 import type {
+  HelpCheckpointSummary,
   HelpCompletionCondition,
   HelpCompletionCriteria,
+  HelpStateDiff,
   HelpTarget,
   RequestHelpParams,
   RequestHelpResult,
-  HelpCheckpointSummary,
-  HelpStateDiff,
   ResolvedTarget,
   RpcError,
 } from "@/transport/types";

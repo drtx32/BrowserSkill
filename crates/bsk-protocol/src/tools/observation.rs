@@ -116,6 +116,16 @@ pub struct ObserveDebug {
     pub surface_probes: Vec<SurfaceProbeDebug>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct VirtualizedListEvidence {
+    pub container_identity: String,
+    pub completeness: String,
+    pub reason: String,
+    pub visible_count: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_count: Option<u32>,
+}
+
 /// Reports what active hover probing did during an observation, so the agent
 /// can judge how far the live page may have drifted from the returned text.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -151,6 +161,10 @@ pub struct ObserveResult {
     pub hover_probe: Option<HoverProbeReport>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub debug: Option<ObserveDebug>,
+    /// Evidence that one or more semantic list containers expose only a
+    /// partial/unknown viewport window. Omitted for ordinary pages.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub virtualized_lists: Vec<VirtualizedListEvidence>,
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +283,9 @@ pub struct ScreenshotFullPageParams {
     /// Capture and PNG encoding deadline; defaults to 120000 milliseconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u32>,
+    /// Use the bounded semantic-anchored traversal for a nested virtual list.
+    #[serde(default)]
+    pub virtualized: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -282,9 +299,15 @@ pub struct ScreenshotFullPageResult {
     pub format: String,
     pub tab_id: i64,
     pub byte_size: u64,
+    /// False when traversal ended stalled, failed, or at a safety bound.
+    #[serde(default)]
+    pub complete: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub termination: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dialogs: Vec<JavaScriptDialogInfo>,
 }
+
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct ScreenshotReadParams {
@@ -414,6 +437,7 @@ mod tests {
             dialogs: Vec::new(),
             hover_probe: None,
             debug: None,
+            virtualized_lists: Vec::new(),
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v.get("ref_count").and_then(|v| v.as_u64()), Some(1));
@@ -461,9 +485,31 @@ mod tests {
                 revealed_content: true,
             }),
             debug: None,
+            virtualized_lists: Vec::new(),
         };
         let v = serde_json::to_value(&r).unwrap();
         let round: ObserveResult = serde_json::from_value(v).unwrap();
         assert_eq!(round, r);
+    }
+
+    #[test]
+    fn observe_result_accepts_snake_case_virtualized_evidence() {
+        let result: ObserveResult = serde_json::from_value(json!({
+            "text": "@vom 1\n",
+            "ref_count": 0,
+            "tab_id": 42,
+            "truncated": false,
+            "virtualized_lists": [{
+                "container_identity": "id:results",
+                "completeness": "partial",
+                "reason": "declared-size",
+                "visible_count": 4,
+                "total_count": 20
+            }]
+        }))
+        .unwrap();
+        assert_eq!(result.virtualized_lists[0].container_identity, "id:results");
+        assert_eq!(result.virtualized_lists[0].visible_count, 4);
+        assert_eq!(result.virtualized_lists[0].total_count, Some(20));
     }
 }

@@ -487,6 +487,7 @@ async fn observe_returns_semantic_text_and_ref_count() {
                 dialogs: vec![],
                 hover_probe: None,
                 debug: None,
+                virtualized_lists: vec![],
             })
             .unwrap(),
         )

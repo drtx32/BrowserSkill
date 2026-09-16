@@ -1,4 +1,4 @@
-import type { VomNode, VomScene } from "@browser-skill/vom";
+import { analyzeVirtualizedLists, type VomNode, type VomScene } from "@browser-skill/vom";
 import type { SemanticNodeId, StructuredSemanticGraph, StructuredSemanticNode } from "./types";
 
 function retained(node: StructuredSemanticNode): boolean {
@@ -77,9 +77,30 @@ export function projectSemanticGraph(graph: StructuredSemanticGraph): VomScene {
       : {}),
   }));
 
+  const listAnalysis = analyzeVirtualizedLists(nodes);
+  const completeness = listAnalysis.some((list) => list.completeness === "partial")
+    ? "partial"
+    : listAnalysis.some((list) => list.completeness === "unknown")
+      ? "unknown"
+      : undefined;
+  const virtualizedLists = listAnalysis.flatMap((list) =>
+    list.completeness === "complete"
+      ? []
+      : [
+          {
+            containerIdentity: list.containerIdentity,
+            completeness: list.completeness,
+            reason: list.reason,
+            visibleCount: list.visibleCount,
+            ...(list.totalCount !== undefined ? { totalCount: list.totalCount } : {}),
+          },
+        ],
+  );
   return {
     viewport: graph.viewport,
     nodes,
     rootFrameId: graph.rootFrameId,
+    ...(completeness ? { completeness } : {}),
+    ...(virtualizedLists.length ? { virtualizedLists } : {}),
   };
 }

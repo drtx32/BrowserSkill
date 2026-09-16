@@ -1161,6 +1161,14 @@ function countRenderable(nodes: VomNode[]): number {
   return nodes.filter(shouldRender).length;
 }
 
+function completenessNotice(scene: VomScene): string | undefined {
+  if (scene.completeness === "partial")
+    return "@warning list content is partial: the DOM/VOM exposes only a loaded viewport slice; scroll in bounded segments before claiming completeness.";
+  if (scene.completeness === "unknown")
+    return "@warning list completeness is unknown: a viewport-sized list may be virtualized; verify with bounded scrolling before claiming completeness.";
+  return undefined;
+}
+
 function renderDoubleLayer(scene: VomScene, layer: BlockingLayer, options: VomOptions): VomResult {
   const included = collectDescendants(scene.nodes, layer.members);
   const visibleNodes = scene.nodes.filter((node) => included.has(node.id));
@@ -1174,8 +1182,9 @@ function renderDoubleLayer(scene: VomScene, layer: BlockingLayer, options: VomOp
   const state = renderNodes(visibleNodes, options, header, scene.surfaces, scene.activeScopeBlocks);
   state.lines.push(renderPageOcclusionLine(hiddenCount));
 
+  const notice = completenessNotice(scene);
   return {
-    text: state.lines.join("\n"),
+    text: state.lines.join("\n") + (notice ? `\n${notice}` : ""),
     refs: state.refs,
     truncated: state.truncated,
   };
@@ -1202,8 +1211,9 @@ export function renderVom(scene: VomScene, options: VomOptions = {}): VomResult 
     scene.activeScopeBlocks,
   );
 
+  const notice = completenessNotice(scene);
   return {
-    text: state.lines.join("\n"),
+    text: state.lines.join("\n") + (notice ? `\n${notice}` : ""),
     refs: state.refs,
     truncated: state.truncated,
   };

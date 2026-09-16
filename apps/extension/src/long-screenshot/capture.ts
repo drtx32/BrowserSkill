@@ -1,3 +1,8 @@
+import {
+  collectVirtualizedSegments,
+  type VirtualizedAdvance,
+  type VirtualizedSegment,
+} from "@browser-skill/vom";
 import { frameSignature, isStaleFrame } from "./frame-freshness";
 import { type FrameSignature } from "./manual";
 import {
@@ -61,11 +66,115 @@ export interface CaptureDeps {
   checkFreshness?: boolean;
   label: string;
   cancelLabel: string;
+  /** Optional semantic-anchored path for nested/virtualized scroll containers. */
+  virtualized?: VirtualizedVisualTraversal<unknown>;
+}
+
+export interface VirtualizedVisualSegment<T> extends VirtualizedSegment<T> {
+  metrics: PageMetrics;
+  /** CSS-pixel coordinates; capture scales them to the screenshot bitmap. */
+  sourceY: number;
+  targetY: number;
+  height: number;
+}
+
+export interface VirtualizedVisualTraversal<T> {
+  read: (segment: number) => Promise<VirtualizedVisualSegment<T>>;
+  advance: (segment: number) => Promise<VirtualizedAdvance | boolean>;
+  fingerprint: (item: T) => string;
+  maxSegments?: number;
+  maxStalledSegments?: number;
+}
+
+export interface VirtualizedCaptureResult {
+  width: number;
+  height: number;
+  complete: boolean;
+  termination:
+    | "complete"
+    | "max-segments"
+    | "stalled"
+    | "end-of-list"
+    | "advance-failed"
+    | "aborted";
+}
+
+/**
+ * Capture semantic-anchored visual windows with the same bounded collector
+ * used by VOM item collection. The ordinary document path below remains the
+ * fast path when no virtualized traversal is supplied.
+ */
+export async function captureVirtualizedPage(
+  deps: Omit<CaptureDeps, "virtualized"> & { virtualized: VirtualizedVisualTraversal<unknown> },
+): Promise<VirtualizedCaptureResult> {
+  let width = 0;
+  let height = 0;
+  try {
+    await deps.page({
+      action: "begin",
+      label: deps.label,
+      cancelLabel: deps.cancelLabel,
+      virtualized: true,
+      ...(deps.scope ? { scope: deps.scope } : {}),
+    });
+    const traversal = deps.virtualized;
+    const windows = new Map<number, VirtualizedVisualSegment<unknown>>();
+    const collected = await collectVirtualizedSegments({
+      read: async (segment) => {
+        const window = await traversal.read(segment);
+        windows.set(segment, window);
+        return window;
+      },
+      advance: traversal.advance,
+      fingerprint: traversal.fingerprint,
+      maxSegments: traversal.maxSegments,
+      maxStalledSegments: traversal.maxStalledSegments,
+      signal: deps.signal,
+    });
+    // Render the exact windows collected above. The traversal's read contract
+    // is responsible for moving the nested container, so semantic and visual
+    // window state stay anchored without a second scroll pass.
+    for (let segment = 0; segment < collected.segments; segment += 1) {
+      deps.signal.throwIfAborted();
+      const window = windows.get(segment);
+      if (!window) throw new ScreenshotError("changed");
+      const bitmap = await deps.screenshot();
+      try {
+        if (!width) {
+          width = bitmap.width;
+        }
+        const scale = bitmap.width / Math.max(1, window.metrics.innerWidth);
+        const sourceY = Math.round(window.sourceY * scale);
+        const targetY = Math.round(window.targetY * scale);
+        const windowHeight = Math.round(window.height * scale);
+        height = Math.max(height, targetY + windowHeight);
+        await deps.write(bitmap, width, sourceY, targetY, windowHeight);
+        deps.progress(
+          "capturing",
+          Math.min(99, Math.round(((segment + 1) / Math.max(1, collected.segments)) * 100)),
+          segment + 1,
+        );
+      } finally {
+        bitmap.close();
+      }
+      if (window.complete) break;
+    }
+    deps.progress("complete", collected.complete ? 100 : 99, collected.segments);
+    return { width, height, complete: collected.complete, termination: collected.termination };
+  } finally {
+    await deps.page({ action: "finish" }).catch(() => {});
+  }
 }
 
 /** Capture one viewport at a time. Height may grow as lazy content is appended;
  * only viewport geometry and each individual exposure must remain stable. */
 export async function capturePage(deps: CaptureDeps) {
+  if (deps.virtualized)
+    return captureVirtualizedPage(
+      deps as Omit<CaptureDeps, "virtualized"> & {
+        virtualized: VirtualizedVisualTraversal<unknown>;
+      },
+    );
   const { signal, page, progress } = deps;
   let covered = 0;
   let width = 0;

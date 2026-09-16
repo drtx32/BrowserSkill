@@ -16,6 +16,7 @@ import {
   parsePngDimensions,
   type ScreenshotDeps,
   stripDataUrlPrefix,
+  toWireVirtualizedLists,
 } from "../observation";
 import type { CapturedNode, CapturedSceneInput } from "../vom/facts";
 
@@ -63,6 +64,28 @@ function fakeAgentWindow(ids: number[]) {
 // 1x1 transparent PNG, base64-encoded. Width 1, height 1.
 const TINY_PNG =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==";
+
+it("maps virtualized completeness evidence to the snake_case protocol wire shape", () => {
+  const wire = toWireVirtualizedLists([
+    {
+      containerIdentity: "id:results",
+      completeness: "partial",
+      reason: "declared-size",
+      visibleCount: 4,
+      totalCount: 20,
+    },
+  ]);
+  expect(wire).toEqual([
+    {
+      container_identity: "id:results",
+      completeness: "partial",
+      reason: "declared-size",
+      visible_count: 4,
+      total_count: 20,
+    },
+  ]);
+  expect(JSON.stringify(wire)).not.toMatch(/containerIdentity|visibleCount|totalCount/);
+});
 
 function makeScreenshotDeps(
   opts: {

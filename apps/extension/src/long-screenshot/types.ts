@@ -70,12 +70,30 @@ export interface PageMetrics {
   /** False while the current bottom is loading or has not settled yet. */
   bottomReady?: boolean;
   loading?: boolean;
+  virtualized?: {
+    items: Array<{ fingerprint: string }>;
+    complete: boolean;
+    advance: "advanced" | "end-of-list" | "failed";
+    sourceY: number;
+    targetY: number;
+    height: number;
+    containerIdentity: string;
+    reason?: string;
+  };
 }
 
 export type PageCommand =
   | { action: "probe" }
-  | { action: "begin"; label: string; cancelLabel: string; scope?: CaptureScope }
+  | {
+      action: "begin";
+      label: string;
+      cancelLabel: string;
+      scope?: CaptureScope;
+      virtualized?: boolean;
+    }
   | { action: "move"; y: number; capture: boolean; final?: boolean }
+  | { action: "virtualized-read" }
+  | { action: "virtualized-advance" }
   | { action: "inspect" }
   | { action: "pause"; paused: boolean }
   | { action: "finish" };

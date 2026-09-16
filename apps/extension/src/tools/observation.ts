@@ -27,6 +27,7 @@ import {
   type VomNode,
   type VomOptions,
   type VomScene,
+  type VomVirtualizedListEvidence,
 } from "@browser-skill/vom";
 import { ChromiumCdp } from "@/browser-driver/chromium-cdp";
 import type { CdpTarget } from "@/browser-driver/frame-graph";
@@ -98,6 +99,18 @@ export const chromeTabsCaptureApi: ChromeTabsCaptureApi = {
 
 /** Re-export so the M6 test suite keeps its import path. */
 export const normaliseRef = sharedNormaliseRef;
+
+export function toWireVirtualizedLists(
+  lists: VomVirtualizedListEvidence[] | undefined,
+): NonNullable<ObserveResult["virtualized_lists"]> {
+  return (lists ?? []).map((list) => ({
+    container_identity: list.containerIdentity,
+    completeness: list.completeness,
+    reason: list.reason,
+    visible_count: list.visibleCount,
+    ...(list.totalCount !== undefined ? { total_count: list.totalCount } : {}),
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // screenshot — `tool.screenshot`
@@ -990,6 +1003,7 @@ export async function captureVomObservation(
           performed: hoverProbes.performed,
           revealedContent: hoverProbes.revealedContent,
         },
+        virtualizedLists: decoratedScene.virtualizedLists,
       }),
       visualOutput,
     };
@@ -1015,6 +1029,7 @@ export async function captureVomObservation(
       performed: hoverProbes.performed,
       revealedContent: hoverProbes.revealedContent,
     },
+    virtualizedLists: decoratedScene.virtualizedLists,
   });
 }
 
@@ -1099,6 +1114,9 @@ async function handleVomObservation(
       if (isRpcError(page)) return page;
       return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
         ...page,
+        ...(observation.virtualizedLists?.length
+          ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
+          : {}),
         ...(observation.hoverProbe?.performed
           ? {
               hover_probe: {
@@ -1145,6 +1163,9 @@ async function handleVomObservation(
       ref_count: observation.refs.length,
       tab_id: target.tabId,
       truncated: observation.truncated,
+      ...(toolName === "observe" && observation.virtualizedLists?.length
+        ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
+        : {}),
       ...(toolName === "observe" && observation.hoverProbe?.performed
         ? {
             hover_probe: {
