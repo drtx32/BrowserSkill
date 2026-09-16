@@ -6,7 +6,7 @@ import {
   type VomScene,
 } from "@browser-skill/vom";
 import type { CdpTarget } from "@/browser-driver/frame-graph";
-import type { RefInput, RefStore } from "@/session-manager/ref-store";
+import type { RefIdentity, RefInput, RefStore } from "@/session-manager/ref-store";
 import type { ObserveResult, RpcError } from "@/transport/types";
 import type { CdpRunner } from "../shared";
 import { throwIfAborted } from "./capture-abort";
@@ -118,6 +118,14 @@ export interface ObservationOutput {
   frames: Map<string, { target: CdpTarget; parentFrameId?: string }>;
   notices: string[];
   maxTokens?: number;
+}
+
+export function rewriteLogicalRefs(text: string, mapping: ReadonlyMap<string, string>): string {
+  return text.replace(/@e\d+\b/g, (token) => `@${mapping.get(token.slice(1)) ?? token.slice(1)}`);
+}
+
+function refIdentity(identity: RenderedRef["identity"]): RefIdentity | undefined {
+  return identity ? { ...identity } : undefined;
 }
 
 export function prepareVisualObservation(
@@ -322,11 +330,16 @@ export async function publishObservationPage(
         tabId,
         frameId: ref.frameId,
         cdpSessionId: target?.sessionId,
+        identity: refIdentity(ref.identity),
       },
     ];
   });
   // Publish only after validation; cancelled preparation leaves buffered rows and refs intact.
-  store.replace(entries);
+  const refMapping = store.replaceStable(entries);
+  if (rendered) {
+    rendered.text = rewriteLogicalRefs(rendered.text, refMapping);
+    for (const ref of rendered.refs) ref.ref = refMapping.get(ref.ref) ?? ref.ref;
+  }
   state.buffer.splice(0, rendered!.consumed);
   state.token = nextToken;
   state.revision = store.revision;

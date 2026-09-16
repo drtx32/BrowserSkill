@@ -172,6 +172,17 @@ export interface RenderedRef extends VomRef {
   role?: string;
   name?: string;
   ctx?: string;
+  /** Stable semantic facts used by the daemon-side logical ref registry. */
+  identity?: {
+    role?: string;
+    name?: string;
+    text?: string;
+    context?: string;
+    frameId?: string;
+    layer?: InteractionLayer;
+    stableId?: string;
+    path?: string;
+  };
   /** Zero-based line index in `VomResult.text`. */
   line: number;
 }

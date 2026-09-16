@@ -49,6 +49,69 @@ describe("RefStore", () => {
       cdpSessionId: "child-session",
     });
   });
+
+  it("reuses a logical ref when a DOM node is replaced", () => {
+    const s = new RefStore();
+    const identity = {
+      role: "button",
+      name: "Save",
+      path: "main/form/Save",
+      layer: "active" as const,
+    };
+    const first = s.replaceStable([["e1", { backendNodeId: 10, tabId: 7, identity }]]);
+    const second = s.replaceStable([["e1", { backendNodeId: 99, tabId: 7, identity }]]);
+    expect(first.get("e1")).toBe("e1");
+    expect(second.get("e1")).toBe("e1");
+    expect(s.resolve("@e1", { tabId: 7 })).toBe(99);
+  });
+
+  it("does not rebind across tabs or blocked layers", () => {
+    const s = new RefStore();
+    const identity = { role: "button", name: "Save", path: "form/Save", layer: "active" as const };
+    s.replaceStable([["e1", { backendNodeId: 10, tabId: 7, identity }]]);
+    const otherTab = s.replaceStable([["e1", { backendNodeId: 20, tabId: 8, identity }]]);
+    expect(otherTab.get("e1")).toBe("e1");
+    const blocked = s.replaceStable([
+      ["e1", { backendNodeId: 30, tabId: 8, identity: { ...identity, layer: "covered" } }],
+    ]);
+    expect(blocked.get("e1")).toBe("e1");
+  });
+
+  it("keeps duplicate semantic controls from sharing a registry identity", () => {
+    const s = new RefStore();
+    const identity = {
+      role: "button",
+      name: "Delete",
+      path: "toolbar/Delete",
+      layer: "active" as const,
+    };
+    s.replaceStable([
+      ["e1", { backendNodeId: 1, tabId: 7, identity }],
+      ["e2", { backendNodeId: 2, tabId: 7, identity }],
+    ]);
+    const next = s.replaceStable([
+      ["e1", { backendNodeId: 3, tabId: 7, identity }],
+      ["e2", { backendNodeId: 4, tabId: 7, identity }],
+    ]);
+    expect(next.get("e1")).toBe("e1");
+    expect(next.get("e2")).toBe("e2");
+  });
+
+  it("bounds retained logical identities", () => {
+    const s = new RefStore({ maxLogicalEntries: 32 });
+    for (let i = 0; i < 80; i++)
+      s.replaceStable([
+        [
+          `e${i + 1}`,
+          {
+            backendNodeId: i + 1,
+            tabId: 7,
+            identity: { role: "button", name: `B${i}`, layer: "active" },
+          },
+        ],
+      ]);
+    expect(s.logicalSizeForTest()).toBeLessThanOrEqual(32);
+  });
 });
 
 describe("document invalidation", () => {
