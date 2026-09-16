@@ -8,7 +8,7 @@ use std::time::Duration;
 use anyhow::Context;
 use bsk_protocol::Method;
 use bsk_protocol::tools::{
-    HelpCompletionCriteria, HelpTarget, RequestHelpParams, RequestHelpResult,
+    HelpCompletionCriteria, HelpOutcome, HelpTarget, RequestHelpParams, RequestHelpResult,
 };
 use clap::Args;
 
@@ -24,6 +24,28 @@ pub(crate) fn legacy_help_override_requested() -> bool {
 
 fn is_off_value(value: Option<&str>) -> bool {
     value.is_some_and(|v| v.trim().eq_ignore_ascii_case("off"))
+}
+
+pub(crate) const REQUEST_HELP_ENV: &str = "BSK_REQUEST_HELP";
+pub(crate) const REQUEST_HELP_DISABLED_NOTE: &str =
+    "request-help disabled by BSK_REQUEST_HELP=off (unattended mode)";
+
+pub(crate) fn disabled_help_result(tab_id: i64, reason: &str) -> RequestHelpResult {
+    RequestHelpResult {
+        outcome: HelpOutcome::Disabled,
+        completed_by: None,
+        note: Some(format!(
+            "{reason}. Re-observe the page and try to complete the task autonomously using available browser tools. Report a blocker only when required information or capability is missing, or no viable approach remains. Do not request human help again or treat this result as completion."
+        )),
+        tab_id,
+        resolved_targets: None,
+        state_diff: None,
+        goal_verified: None,
+    }
+}
+
+pub(crate) fn request_help_disabled() -> bool {
+    is_off_value(std::env::var(REQUEST_HELP_ENV).ok().as_deref())
 }
 
 #[derive(Debug, Clone, Args)]
@@ -88,15 +110,7 @@ pub fn dispatch(args: RequestHelpArgs, format: Format) -> Result<(), CliError> {
     // Disabled (`BSK_REQUEST_HELP=off`): return a synthetic `disabled`
     // result immediately — no daemon startup, no overlay, no waiting.
     if request_help_disabled() {
-        let result = RequestHelpResult {
-            outcome: HelpOutcome::Disabled,
-            completed_by: None,
-            note: Some(REQUEST_HELP_DISABLED_NOTE.into()),
-            tab_id: args.tab_id.unwrap_or(0),
-            resolved_targets: None,
-            state_diff: None,
-            goal_verified: None,
-        };
+        let result = disabled_help_result(args.tab_id.unwrap_or(0), REQUEST_HELP_DISABLED_NOTE);
         return render(&result, format);
     }
     let info = ensure_daemon().context("ensure daemon is running")?;

@@ -220,6 +220,7 @@ fn run_start(sock: PathBuf, args: SessionStartArgs, format: Format) -> Result<()
             width: args.width,
             height: args.height,
             focused: args.no_focus.then_some(false),
+            reuse_default: false,
         },
     );
     waited.store(true, Ordering::SeqCst);

@@ -425,15 +425,10 @@ async fn handle_tool_dispatch(
     // blocking human-in-loop call to the extension; answer immediately
     // with a synthetic `disabled` result.
     if method == Method::ToolRequestHelp && crate::cli::human_loop::request_help_disabled() {
-        let result = RequestHelpResult {
-            outcome: HelpOutcome::Disabled,
-            completed_by: None,
-            note: Some(crate::cli::human_loop::REQUEST_HELP_DISABLED_NOTE.into()),
-            tab_id: params.get("tab_id").and_then(Value::as_i64).unwrap_or(0),
-            resolved_targets: None,
-            state_diff: None,
-            goal_verified: None,
-        };
+        let result = crate::cli::human_loop::disabled_help_result(
+            params.get("tab_id").and_then(Value::as_i64).unwrap_or(0),
+            crate::cli::human_loop::REQUEST_HELP_DISABLED_NOTE,
+        );
         return ResponseBody::Ok(serde_json::to_value(result).unwrap_or(Value::Null));
     }
     let session_id = match params.get("session_id").and_then(|v| v.as_str()) {
@@ -1086,6 +1081,7 @@ async fn handle_session_start(
         && params.focused.is_none()
     {
         return Ok(serde_json::to_value(CliSessionStartResult {
+            interaction: existing.interaction,
             session_id: existing.id.0,
             browser_instance_id: existing.browser_id.0,
             agent_window_id: existing.agent_window_id,

@@ -142,7 +142,15 @@ mod tests {
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(5_000)).unwrap();
         let denied = leases.acquire("browser", "writer-b", Some(5_000)).unwrap_err();
-        assert_eq!(denied, AcquireError::Held(first));
+        assert_eq!(
+            denied,
+            AcquireError::Held(LeaseStatus {
+                browser_id: Some("browser".into()),
+                session_id: Some("writer-a".into()),
+                token: None,
+                expires_at_ms: first.expires_at_ms,
+            })
+        );
         assert!(leases.require("browser", "writer-a").is_ok());
         assert!(leases.require("browser", "writer-b").is_err());
     }

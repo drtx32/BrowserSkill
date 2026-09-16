@@ -97,6 +97,7 @@ mod tests {
 
     fn fake_session(id: &str) -> Session {
         Session {
+            interaction: None,
             id: SessionId(id.into()),
             browser_id: BrowserId("browser".into()),
             agent_window_id: Some(1),
