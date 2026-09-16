@@ -1,3 +1,4 @@
+import type { InteractionLayer } from "@browser-skill/vom";
 import type { VisualCandidate } from "@/tools/vom/visual-discovery";
 
 /** Session-local refs describe the latest observation. Reusing eN does not identify
@@ -21,7 +22,7 @@ export interface RefIdentity {
   text?: string;
   context?: string;
   frameId?: string;
-  layer?: "active" | "covered" | "background";
+  layer?: InteractionLayer;
   stableId?: string;
   path?: string;
 }
@@ -238,12 +239,14 @@ export class RefStore {
 }
 
 function sameScope(a: RefEntry, b: RefEntry): boolean {
-  return (
-    a.kind === "dom" &&
-    b.kind === "dom" &&
-    a.tabId === b.tabId &&
-    a.frameId === b.frameId &&
-    a.cdpSessionId === b.cdpSessionId
+  if (a.kind !== "dom" || b.kind !== "dom") return false;
+  if (a.tabId !== b.tabId || a.cdpSessionId !== b.cdpSessionId) return false;
+  if (a.frameId === b.frameId) return true;
+  // A same-session soft frame refresh may allocate a new frame id. Preserve
+  // only when an application-stable identifier agrees; otherwise frame
+  // changes remain an intentional scope boundary.
+  return Boolean(
+    a.identity?.stableId && b.identity?.stableId && a.identity.stableId === b.identity.stableId,
   );
 }
 
@@ -258,7 +261,7 @@ function identityKey(identity: RefIdentity | undefined, tabId: number | null): s
     identity.context,
   ];
   if (values.every((value) => !value)) return undefined;
-  return `${tabId ?? "?"}|${identity.frameId ?? ""}|${values.map((value) => value ?? "").join("\u0001")}`;
+  return `${tabId ?? "?"}|${values.map((value) => value ?? "").join("\u0001")}`;
 }
 
 /** Canonical RefStore key: `@e3` and `e3` both become `e3`. */

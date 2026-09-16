@@ -77,6 +77,61 @@ describe("RefStore", () => {
     expect(blocked.get("e1")).toBe("e1");
   });
 
+  it("uses the layer guard itself for same-tab covered refs", () => {
+    const s = new RefStore();
+    const active = { role: "button", name: "Save", path: "form/Save", layer: "active" as const };
+    s.replaceStable([["e9", { backendNodeId: 10, tabId: 7, identity: active }]]);
+    const blocked = s.replaceStable([
+      ["e1", { backendNodeId: 11, tabId: 7, identity: { ...active, layer: "covered" } }],
+    ]);
+    expect(blocked.get("e1")).toBe("e1");
+    expect(s.resolve("e1", { tabId: 7 })).toBe(11);
+  });
+
+  it("allows a same-session soft frame refresh only with a stable id", () => {
+    const s = new RefStore();
+    const first = {
+      role: "button",
+      name: "Save",
+      path: "form/Save",
+      frameId: "frame-a",
+      stableId: "id=save",
+      layer: "active" as const,
+    };
+    s.replaceStable([
+      [
+        "e1",
+        { backendNodeId: 10, tabId: 7, frameId: "frame-a", cdpSessionId: "cdp", identity: first },
+      ],
+    ]);
+    const stable = s.replaceStable([
+      [
+        "e1",
+        {
+          backendNodeId: 11,
+          tabId: 7,
+          frameId: "frame-b",
+          cdpSessionId: "cdp",
+          identity: { ...first, frameId: "frame-b" },
+        },
+      ],
+    ]);
+    expect(stable.get("e1")).toBe("e1");
+    const unsafe = s.replaceStable([
+      [
+        "e9",
+        {
+          backendNodeId: 12,
+          tabId: 7,
+          frameId: "frame-c",
+          cdpSessionId: "cdp",
+          identity: { ...first, frameId: "frame-c", stableId: undefined },
+        },
+      ],
+    ]);
+    expect(unsafe.get("e9")).toBe("e9");
+  });
+
   it("keeps duplicate semantic controls from sharing a registry identity", () => {
     const s = new RefStore();
     const identity = {
