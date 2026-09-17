@@ -332,7 +332,9 @@ function checkFocusAbort(signal: AbortSignal | undefined): void {
 // inside selector resolution and frame scrolling, without changing other tools.
 function focusCdp(cdp: CdpRunner, signal: AbortSignal | undefined): CdpRunner {
   const send = <T = unknown>(target: CdpTarget, method: string, params?: object): Promise<T> => {
-    checkFocusAbort(signal);
+    // Liveness probing may acquire a temporary object immediately before a
+    // cancellation. Always allow that handle's release through.
+    if (!(signal?.aborted && method === "Runtime.releaseObject")) checkFocusAbort(signal);
     return cdpRunnerForTarget(cdp, target).send<T>(target.tabId, method, params);
   };
   return {
