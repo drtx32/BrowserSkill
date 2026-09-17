@@ -24,6 +24,7 @@ export interface WheelDeps {
   cdp: CdpRunner;
   tabsApi: ChromeTabsApi;
   signal?: AbortSignal;
+  reobserve?: (sessionId: string, tabId: number) => Promise<void>;
   /** Temporarily disable the Agent Window overlay's input blocker. */
   bypassOverlay?: (tabId: number, enabled: boolean) => Promise<void>;
 }
@@ -122,9 +123,9 @@ export async function handleWheel(
     if (isRpcError(target)) return target;
     const denied = enforceAgentWindow(ctx, target, "wheel");
     if (denied) return denied;
-    // Reject stale refs before changing hidden-page focus or rendering state.
+    // Resolve (and, if needed, refresh) before hidden-page input preparation.
     if (params.ref) {
-      const node = await resolveBackendNode(cdp, ctx, target, { ref: params.ref }, "wheel");
+      const node = await resolveBackendNode(cdp, ctx, target, { ref: params.ref }, "wheel", deps.reobserve);
       if (isRpcError(node)) return node;
     }
     return await withInputReady(ctx, target.tabId, { ...deps, deadline }, async (input) => {
@@ -196,11 +197,12 @@ async function resolveWheelPoint(
   target: { tabId: number },
   params: WheelParams,
   deadline: number,
+  reobserve?: WheelDeps["reobserve"],
 ): Promise<WheelPoint | RpcError> {
   const hasRef = typeof params.ref === "string" && params.ref.length > 0;
   const hasSelector = typeof params.selector === "string" && params.selector.length > 0;
   if (hasRef || hasSelector) {
-    const node = await resolveBackendNode(cdp, ctx, target, params, "wheel");
+    const node = await resolveBackendNode(cdp, ctx, target, params, "wheel", reobserve);
     if (isRpcError(node)) return node;
     const geometry = await resolveNodeGeometry(
       cdp,

@@ -339,6 +339,14 @@ export class ToolDispatcher {
 
   private async invoke(req: RequestFrame, signal: AbortSignal): Promise<unknown | RpcError> {
     const sessionId = (req.params as { session_id?: string } | undefined)?.session_id;
+    const reobserve = async (id: string, tabId: number): Promise<void> => {
+      await handleObserve(
+        this.sessions,
+        { session_id: id, tab_id: tabId },
+        this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsCaptureApi } : undefined,
+        signal,
+      );
+    };
     // Also enforce this for gateways backed by a local-mode daemon, where the
     // standalone server's early IPC rejection does not apply.
     if (
@@ -565,6 +573,7 @@ export class ToolDispatcher {
                     tabsApi: chromeTabsApi,
                     signal,
                     bypassOverlay,
+                    reobserve,
                   }
                 : undefined,
             ),
@@ -583,6 +592,7 @@ export class ToolDispatcher {
                 bypassOverlay: (tabId, enabled) =>
                   this.setHoverBypass((req.params as HoverParams).session_id, tabId, enabled),
                 keepOverlayBypassAfterHover: true,
+                reobserve,
               }
             : undefined,
         );
@@ -596,7 +606,7 @@ export class ToolDispatcher {
               this.sessions,
               req.params as WheelParams,
               this.cdp
-                ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, bypassOverlay }
+                ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, bypassOverlay, reobserve }
                 : undefined,
             ),
           { releaseAfter: true },
@@ -609,7 +619,7 @@ export class ToolDispatcher {
             handleScrollTo(
               this.sessions,
               req.params as ScrollToParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
+              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, reobserve } : undefined,
             ),
           signal,
         );
@@ -620,7 +630,7 @@ export class ToolDispatcher {
             handleFocus(
               this.sessions,
               req.params as FocusParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
+              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, reobserve } : undefined,
             ),
           signal,
         );
@@ -631,7 +641,7 @@ export class ToolDispatcher {
             handleBlur(
               this.sessions,
               req.params as BlurParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
+              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, reobserve } : undefined,
             ),
           signal,
         );
@@ -642,7 +652,7 @@ export class ToolDispatcher {
             handleFill(
               this.sessions,
               req.params as FillParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
+              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, reobserve } : undefined,
             ),
           signal,
         );
@@ -653,7 +663,7 @@ export class ToolDispatcher {
             handlePress(
               this.sessions,
               req.params as PressParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal } : undefined,
+              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsApi, signal, reobserve } : undefined,
             ),
           signal,
         );
@@ -678,6 +688,7 @@ export class ToolDispatcher {
                   tabsApi: chromeTabsApi,
                   signal,
                   bypassOverlay,
+                  reobserve,
                 })
               : Promise.resolve({
                   code: "unsupported",
@@ -695,6 +706,7 @@ export class ToolDispatcher {
                   tabsApi: chromeTabsApi,
                   signal,
                   bypassOverlay,
+                  reobserve,
                 })
               : Promise.resolve({
                   code: "unsupported",

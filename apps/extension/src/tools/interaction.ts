@@ -62,6 +62,8 @@ export interface InteractionDeps {
   bypassOverlay?: (tabId: number, enabled: boolean) => Promise<void>;
   /** Keep hover hit-testing active for the caller's next observation/action. */
   keepOverlayBypassAfterHover?: boolean;
+  /** One bounded semantic refresh used only after an unknown ref lookup. */
+  reobserve?: (sessionId: string, tabId: number) => Promise<void>;
 }
 
 export interface ResolvedActionTarget {
@@ -151,6 +153,7 @@ export async function resolveBackendNode(
   target: { tabId: number },
   params: { ref?: string; selector?: string },
   toolName: string,
+  reobserve?: InteractionDeps["reobserve"],
 ): Promise<
   | {
       backendNodeId: number;
@@ -176,7 +179,15 @@ export async function resolveBackendNode(
     };
   }
   if (hasRef) {
-    const resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
+    let resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
+    if (isRpcError(resolved) && resolved.data?.reason === "ref_not_found" && reobserve) {
+      const prior = ctx.refStore.logicalEntryForRef(params.ref as string);
+      if (prior?.tabId === target.tabId) {
+        await reobserve(ctx.sessionId, target.tabId);
+        if (ctx.refStore.rebindUnique(params.ref as string, target.tabId))
+          resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
+      }
+    }
     if (isRpcError(resolved)) return resolved;
     return {
       backendNodeId: resolved.backendNodeId,
@@ -337,7 +348,7 @@ async function changeFocus(
     if (denied) return denied;
     tabId = target.tabId;
     const dialogCursor = markDialogCursor(deps.cdp, tabId);
-    const node = await resolveBackendNode(cdp, ctx, target, params, action);
+    const node = await resolveBackendNode(cdp, ctx, target, params, action, deps.reobserve);
     checkFocusAbort(deps.signal);
     if (isRpcError(node)) return node;
     const nodeCdp = cdpRunnerForTarget(cdp, node.cdpTarget);
@@ -441,8 +452,9 @@ export async function resolveActionTarget(
   target: ResolvedTargetTab,
   params: { ref?: string; selector?: string },
   toolName: string,
+  reobserve?: InteractionDeps["reobserve"],
 ): Promise<ResolvedActionTarget | RpcError> {
-  const node = await resolveBackendNode(cdp, ctx, target, params, toolName);
+  const node = await resolveBackendNode(cdp, ctx, target, params, toolName, reobserve);
   return isRpcError(node) ? node : { tab: target, ...node };
 }
 
@@ -472,7 +484,7 @@ export async function handleClick(
       clickVisualPoint(ctx, target, params, deps, consumed, input.markSent),
     );
   }
-  const resolved = await resolveActionTarget(deps.cdp, ctx, target, params, "click");
+  const resolved = await resolveActionTarget(deps.cdp, ctx, target, params, "click", deps.reobserve);
   if (isRpcError(resolved)) return resolved;
   return withInputReady(ctx, target.tabId, { ...deps, deadline }, (input) =>
     clickResolvedTarget(ctx, resolved, params, deps, input.markSent),
@@ -736,7 +748,7 @@ export async function handleHover(
   if (denied) return denied;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
 
-  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "hover");
+  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "hover", deps.reobserve);
   if (isRpcError(node)) return node;
 
   deps.cdp.trackSessionTab?.(ctx.sessionId, target.tabId);
@@ -1016,7 +1028,7 @@ export async function handleFill(
   if (denied) return denied;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
 
-  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "fill");
+  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "fill", deps.reobserve);
   if (isRpcError(node)) return node;
   const nodeCdp = cdpRunnerForTarget(deps.cdp, node.cdpTarget);
 
@@ -1483,7 +1495,7 @@ export async function handlePress(
 
   const node =
     params.ref || params.selector
-      ? await resolveBackendNode(deps.cdp, ctx, target, params, "press")
+      ? await resolveBackendNode(deps.cdp, ctx, target, params, "press", deps.reobserve)
       : undefined;
   if (node && isRpcError(node)) return node;
   return withInputReady(ctx, target.tabId, { ...deps, deadline }, async (input) => {
@@ -1613,7 +1625,7 @@ export async function handleSelect(
   if (denied) return denied;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
 
-  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "select");
+  const node = await resolveBackendNode(deps.cdp, ctx, target, params, "select", deps.reobserve);
   if (isRpcError(node)) return node;
   const nodeCdp = cdpRunnerForTarget(deps.cdp, node.cdpTarget);
 
