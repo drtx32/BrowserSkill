@@ -83,21 +83,38 @@ impl LeaseRegistry {
     }
 
     /// Recover mutation authority after this controller's lease naturally
-    /// expires, but only while the browser lease is still free.
+    /// expires, but only while the browser lease is still free. Also
+    /// acquires fresh when the daemon lost the prior lease record (e.g.
+    /// restart) but the same logical session is still bound to this
+    /// browser — the browser is provably free because no record exists,
+    /// so the new owner cannot be stealing from anyone.
     pub fn require_or_reacquire(&self, browser_id: &str, owner: &str) -> Result<(), BrowserLeaseStatus> {
         let now = now_ms();
         let mut leases = self.leases.lock().expect("lease registry poisoned");
-        let Some(existing) = leases.get(browser_id).cloned() else {
-            return Err(BrowserLeaseStatus::free(browser_id));
-        };
-        if existing.expires_at_ms > now {
-            return if existing.owner == owner { Ok(()) } else { Err(public_status(browser_id, &existing, now)) };
+        if let Some(existing) = leases.get(browser_id).cloned() {
+            if existing.expires_at_ms > now {
+                return if existing.owner == owner {
+                    Ok(())
+                } else {
+                    Err(public_status(browser_id, &existing, now))
+                };
+            }
+            // Expired record: only the prior owner may rehydrate; any
+            // other caller must explicitly acquire (or wait for natural
+            // expiry).
+            if existing.owner != owner {
+                return Err(BrowserLeaseStatus::free(browser_id));
+            }
         }
-        if existing.owner != owner {
-            return Err(BrowserLeaseStatus::free(browser_id));
-        }
+        // Either no record (browser free, lease map empty) or same-owner
+        // expired record. The browser is free in both cases; acquire fresh.
         let token = format!("{owner}-{}", uuid::Uuid::new_v4());
-        let lease = Lease { owner: owner.into(), token, acquired_at_ms: now, expires_at_ms: now + DEFAULT_LEASE_TTL_MS as i64 };
+        let lease = Lease {
+            owner: owner.into(),
+            token,
+            acquired_at_ms: now,
+            expires_at_ms: now + DEFAULT_LEASE_TTL_MS as i64,
+        };
         leases.insert(browser_id.into(), lease);
         Ok(())
     }
@@ -200,10 +217,46 @@ mod tests {
     }
 
     #[test]
-    fn explicit_release_does_not_leave_a_reacquire_ticket() {
+    fn explicit_release_then_same_owner_reacquires_fresh() {
+        // After explicit release the browser is free. The next mutation
+        // from the same owner must auto-acquire fresh — the prior
+        // implementation treated "no record" as a hard fail, which broke
+        // ELI-242 gate #3 once a daemon restart also produced a missing
+        // record (in-memory lease map) for a still-bound session.
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(1_000)).unwrap();
         leases.release("browser", "writer-a", first.token.as_deref()).unwrap();
-        assert!(leases.require_or_reacquire("browser", "writer-a").is_err());
+        assert!(leases.require_or_reacquire("browser", "writer-a").is_ok());
+    }
+
+    #[test]
+    fn fresh_session_without_lease_record_lazily_acquires() {
+        // Daemon restart drops the in-memory lease map while the logical
+        // session is still bound to the browser. The next mutation from
+        // the same session must safely auto-acquire without a manual
+        // `lease acquire`, because the browser is provably free — no
+        // record means no other owner can possibly hold it.
+        let leases = LeaseRegistry::new();
+        assert!(leases.require_or_reacquire("browser", "session-x").is_ok());
+        assert!(leases.require("browser", "session-x").is_ok());
+        let other = leases.require_or_reacquire("browser", "session-y");
+        let BrowserLeaseStatus { owner, token, remaining_ms, .. } = other.unwrap_err();
+        assert_eq!(owner.as_deref(), Some("session-x"));
+        assert_eq!(token, None);
+        assert!(remaining_ms.unwrap_or(0) > 0);
+    }
+
+    #[test]
+    fn competing_active_owner_still_fails_closed() {
+        // The fix must not weaken the active-controller denial: a
+        // genuinely live lease owned by someone else must still return
+        // permission_denied with the holder, never silently steal.
+        let leases = LeaseRegistry::new();
+        leases.acquire("browser", "writer-a", Some(5_000)).unwrap();
+        let denied = leases.require_or_reacquire("browser", "writer-b").unwrap_err();
+        let BrowserLeaseStatus { owner, token, .. } = denied;
+        assert_eq!(owner.as_deref(), Some("writer-a"));
+        assert_eq!(token, None);
+        assert!(leases.require_or_reacquire("browser", "writer-a").is_ok());
     }
 }
