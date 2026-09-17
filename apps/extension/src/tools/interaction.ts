@@ -50,7 +50,7 @@ import {
   type ResolvedTargetTab,
   resolveTargetTab,
 } from "./shared";
-import { resolveSnapshotRef } from "./snapshot-ref";
+import { resolveSnapshotRef, type SnapshotRefLookup } from "./snapshot-ref";
 
 export interface InteractionDeps {
   cdp: CdpRunner;
@@ -142,6 +142,43 @@ async function wait(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+type BackendNodeLiveness = "live" | "detached" | "unknown";
+
+async function backendNodeLiveness(
+  cdp: CdpRunner,
+  resolved: SnapshotRefLookup,
+  tabId: number,
+): Promise<BackendNodeLiveness> {
+  const runner = cdpRunnerForTarget(cdp, {
+    tabId,
+    ...(resolved.cdpSessionId ? { sessionId: resolved.cdpSessionId } : {}),
+  });
+  let objectId: string | undefined;
+  try {
+    const reply = await runner.send<{ object?: { objectId?: string } }>(tabId, "DOM.resolveNode", {
+      backendNodeId: resolved.backendNodeId,
+    });
+    objectId = reply.object?.objectId;
+    if (!objectId) return "unknown";
+    const state = await runner.send<{ result?: { value?: unknown } }>(
+      tabId,
+      "Runtime.callFunctionOn",
+      {
+        objectId,
+        functionDeclaration: "function() { return this.isConnected === true; }",
+        returnByValue: true,
+      },
+    );
+    if (state.result?.value === true) return "live";
+    if (state.result?.value === false) return "detached";
+    return "unknown";
+  } catch {
+    return "unknown";
+  } finally {
+    if (objectId) await runner.send(tabId, "Runtime.releaseObject", { objectId }).catch(() => {});
+  }
+}
+
 /**
  * Resolve `{ref?, selector?}` into a `backendNodeId`. Returns an
  * `RpcError` if the caller supplied neither (or both), or if neither
@@ -179,10 +216,26 @@ export async function resolveBackendNode(
     };
   }
   if (hasRef) {
+    let healingAttempted = false;
     let resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
     if (isRpcError(resolved) && resolved.data?.reason === "ref_not_found" && reobserve) {
       const prior = ctx.refStore.logicalEntryForRef(params.ref as string);
       if (prior?.tabId === target.tabId) {
+        healingAttempted = true;
+        await reobserve(ctx.sessionId, target.tabId);
+        if (ctx.refStore.rebindUnique(params.ref as string, target.tabId))
+          resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
+      }
+    }
+    if (isRpcError(resolved)) return resolved;
+    if (
+      reobserve &&
+      !healingAttempted &&
+      (await backendNodeLiveness(cdp, resolved, target.tabId)) === "detached"
+    ) {
+      const prior = ctx.refStore.logicalEntryForRef(params.ref as string);
+      if (prior?.tabId === target.tabId) {
+        healingAttempted = true;
         await reobserve(ctx.sessionId, target.tabId);
         if (ctx.refStore.rebindUnique(params.ref as string, target.tabId))
           resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
