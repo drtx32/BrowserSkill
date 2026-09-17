@@ -24,7 +24,7 @@ use tokio_tungstenite::tungstenite::handshake::client::generate_key;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use support::wait_for_browser_count;
+use support::{wait_for_browser_count, wait_for_no_sessions};
 
 const TEST_EXT_ID: &str = "abcdefghijklmnopabcdefghijklmnop";
 
@@ -730,7 +730,7 @@ async fn session_remains_registered_without_tool_activity() {
         agent_window_id: Some(7),
         created_at_ms: 0,
     });
-    state.tool_queues.spawn(session_id);
+    state.tool_queues.spawn(session_id.clone());
 
     tokio::time::sleep(Duration::from_millis(100)).await;
     assert!(state.sessions.get(&session_id).is_some());
