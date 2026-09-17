@@ -65,10 +65,11 @@ mutation from the same live logical session
 automatically reacquires a naturally expired lease when it is free. If another
 controller holds it, the mutation fails closed. Reconnect/rebind resumes the
 existing session when the browser is still alive.
-After a daemon restart loses its in-memory lease table, run the explicit
-`bootstrap`/session-control path before mutating; a missing lease record alone
-never grants mutation authority. An explicit `lease release` is a deliberate
-handoff and also requires explicit reacquisition.
+After lease-state loss (for example a daemon restart), use the explicit
+`bootstrap`/session-control reuse or rebind path while the live session registry
+is still present; a missing lease record alone never grants mutation authority.
+An explicit `lease release` is a deliberate handoff and also requires explicit
+reacquisition.
 
 The shared browser has one short-lived mutation lease. `session start` acquires
 it for the session; accepted mutations renew it within a bounded TTL, while

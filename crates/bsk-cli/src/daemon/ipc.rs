@@ -1081,9 +1081,9 @@ async fn handle_session_start(
         && params.focused.is_none()
     {
         // `reuse_default` is an explicit bootstrap/session-control action.
-        // It is the only mutation-time-independent recovery path for a
-        // daemon restart that cleared the in-memory lease table; unlike a
-        // normal tool dispatch it may reacquire a missing lease record.
+        // It can recover lease-state loss only while this daemon still has
+        // the live session in its in-memory registry; unlike a normal tool
+        // dispatch it may reacquire a missing lease record.
         if let Err(crate::daemon::lease::AcquireError::Held(holder)) =
             state.leases.acquire(&existing.browser_id.0, &existing.id.0, None)
         {

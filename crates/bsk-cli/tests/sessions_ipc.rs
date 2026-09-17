@@ -372,6 +372,116 @@ async fn session_start_stop_round_trip_via_ipc() {
 }
 
 #[tokio::test]
+async fn session_start_reuse_default_reacquires_missing_lease_and_respects_owner() {
+    let (handle, sock) = spawn_daemon().await;
+    let mut ws = connect_ext(handle.ws_addr()).await;
+    let _ = handshake_as_ext(&mut ws).await;
+    let ws = Arc::new(tokio::sync::Mutex::new(ws));
+    let ws_clone = Arc::clone(&ws);
+    let responder = tokio::spawn(async move {
+        loop {
+            let next = {
+                let mut g = ws_clone.lock().await;
+                g.next().await
+            };
+            let Some(Ok(Message::Text(text))) = next else { break };
+            let Frame::Request(req) = serde_json::from_str(&text).unwrap() else {
+                continue;
+            };
+            if req.method != Method::ToolSessionStart {
+                continue;
+            }
+            let mut g = ws_clone.lock().await;
+            g.send(Message::Text(
+                serde_json::to_string(&ResponseFrame {
+                    id: req.id,
+                    body: ResponseBody::Ok(
+                        serde_json::to_value(SessionStartResult {
+                            interaction: None,
+                            agent_window_id: Some(4242),
+                        })
+                        .unwrap(),
+                    ),
+                })
+                .unwrap(),
+            ))
+            .await
+            .unwrap();
+        }
+    });
+
+    let mut ipc = IpcClient::connect(&sock).await.unwrap();
+    let start: serde_json::Value = ipc
+        .call(
+            "reuse-start-1",
+            Method::SessionStart,
+            Some(serde_json::json!({ "focused": false })),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let session_id = start["session_id"].as_str().unwrap().to_owned();
+
+    // Explicit release creates the missing-record state. Reuse is the
+    // deliberate bootstrap action that may reacquire it.
+    ipc.call::<serde_json::Value, serde_json::Value>(
+        "reuse-release",
+        Method::LeaseRelease,
+        Some(serde_json::json!({
+            "browser_instance_id": TEST_EXT_ID,
+            "owner": session_id,
+        })),
+        Duration::from_secs(2),
+    ).await.unwrap().unwrap();
+
+    ipc.call::<serde_json::Value, serde_json::Value>(
+        "reuse-competing-acquire",
+        Method::LeaseAcquire,
+        Some(serde_json::json!({
+            "browser_instance_id": TEST_EXT_ID,
+            "owner": "competing-session",
+        })),
+        Duration::from_secs(2),
+    ).await.unwrap().unwrap();
+    let denied: Result<serde_json::Value, RpcError> = ipc
+        .call(
+            "reuse-default-denied",
+            Method::SessionStart,
+            Some(serde_json::json!({ "reuse_default": true })),
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.unwrap_err().code, ErrorCode::PermissionDenied);
+
+    ipc.call::<serde_json::Value, serde_json::Value>(
+        "reuse-competing-release",
+        Method::LeaseRelease,
+        Some(serde_json::json!({
+            "browser_instance_id": TEST_EXT_ID,
+            "owner": "competing-session",
+        })),
+        Duration::from_secs(2),
+    ).await.unwrap().unwrap();
+    let reused: serde_json::Value = ipc
+        .call(
+            "reuse-default-reacquire",
+            Method::SessionStart,
+            Some(serde_json::json!({ "reuse_default": true })),
+            Duration::from_secs(2),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reused["session_id"], session_id);
+    assert_eq!(reused["browser_instance_id"], TEST_EXT_ID);
+
+    responder.abort();
+    handle.shutdown().await;
+}
+
+#[tokio::test]
 async fn cancelling_session_start_rolls_back_a_late_extension_success() {
     const START_RPC_ID: &str = "session-start-cancel";
 
