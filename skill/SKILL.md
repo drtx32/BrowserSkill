@@ -60,9 +60,19 @@ not replace a fresh `observe` before interacting.
 
 Task, agent-turn, idle, runtime, and transport timeouts only end controller
 execution or its lease; timeouts only end controller execution or its lease and
-must not close the browser, tabs, pages, Agent Window, or unsaved content.
-unsaved content. Reconnect/rebind resumes the existing session when the browser
-is still alive.
+must not close the browser, tabs, pages, Agent Window, or unsaved content. A later
+mutation from the same live logical session
+automatically reacquires a naturally expired lease when it is free. If another
+controller holds it, the mutation fails closed. Reconnect/rebind resumes the
+existing session when the browser is still alive.
+
+The shared browser has one short-lived mutation lease. `session start` acquires
+it for the session; accepted mutations renew it within a bounded TTL, while
+`observe`, snapshots and other passive reads remain available to observers. Use
+`bsk lease status --browser <id>` for the current owner, `bsk lease renew` to
+extend a handoff, and `bsk lease release` before explicitly handing control to
+another agent. Expiry or a daemon/client crash releases mutation authority
+without closing the browser or changing its login/page state.
 
 1. Define success from the user's request. Start `bsk session start --json` and
    retain its `session_id`. With multiple browsers, run `bsk browsers` and add
@@ -76,9 +86,13 @@ is still alive.
    bsk observe --session <id>
    ```
 
-3. Choose an action using fresh refs from that observation. Observe again after
-   navigation or meaningful DOM changes. Check an ambiguous result once; once
-   success is visible, stop acting rather than refreshing or checking again.
+3. Choose an action using refs from that observation. Same-page stable logical
+   refs may be reused while their semantic identity remains valid; the daemon
+   may safely rebind a stale ref once during the action. Fresh observe is
+   required after real navigation/page/origin identity changes, an explicit
+   stale or ambiguous failure, or a meaningful state change that invalidates
+   the target. Check an ambiguous result once; once success is visible, stop
+   acting rather than refreshing or checking again.
 4. Always run `bsk session stop <id>` on success and failure, unless keeping the
    session open is part of the user's request. This also returns borrowed tabs.
    Returned tabs stay open in the user's window. Do not rely on idle cleanup
@@ -93,8 +107,11 @@ refs. Stop at the requested goal; a trace grants no additional authorization.
 
 ## Read and interact
 
-Prefer `observe` for text, controls and `@eN` refs. Navigation invalidates refs;
-large DOM changes can stale them too. Re-observe before the next interaction.
+Prefer `observe` for text, controls and `@eN` refs. Navigation/page identity
+changes invalidate refs. Same-page rerenders can keep stable logical refs valid,
+and action dispatch performs bounded self-healing for an otherwise stale ref;
+re-observe after an explicit stale/ambiguous result or other invalidating state
+change.
 Use refs for iframe/shadow-root targets; CSS selectors search the main document.
 
 Choose the relevant example, using a ref that actually appeared on the page:

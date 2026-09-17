@@ -59,8 +59,9 @@ handoff/recovery markers. Use it to avoid repeating completed actions; it does
 not replace a fresh `observe` before interacting.
 
 Task, agent-turn, idle, runtime, and transport timeouts only end controller
-execution or its lease; they must not close the browser, tabs, pages, Agent
-Window, or unsaved content. A later mutation from the same live logical session
+execution or its lease; timeouts only end controller execution or its lease and
+must not close the browser, tabs, pages, Agent Window, or unsaved content. A later
+mutation from the same live logical session
 automatically reacquires a naturally expired lease when it is free. If another
 controller holds it, the mutation fails closed. Reconnect/rebind resumes the
 existing session when the browser is still alive.
