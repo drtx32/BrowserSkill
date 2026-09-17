@@ -148,6 +148,65 @@ describe("handleClick", () => {
     expect(fake.sent.some((call) => call.method === "Input.dispatchMouseEvent")).toBe(true);
   });
 
+  it("self-heals when the old backend node resolves but is detached", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const identity = { stableId: "save", role: "button", name: "Save", layer: "active" as const };
+    ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    const fake = makeFakeCdp({
+      "DOM.resolveNode": (params) => ({
+        object: { objectId: (params as { backendNodeId: number }).backendNodeId === 10 ? "detached" : "live" },
+      }),
+      "Runtime.callFunctionOn": (params) => ({
+        result: { value: (params as { objectId: string }).objectId === "live" },
+      }),
+      "Runtime.releaseObject": () => ({}),
+      "DOM.scrollIntoViewIfNeeded": () => ({}),
+      "DOM.getContentQuads": () => ({ quads: [[10, 20, 110, 20, 110, 60, 10, 60]] }),
+      "Input.dispatchMouseEvent": () => ({}),
+    });
+    const reobserve = vi.fn(async () => {
+      ctx.refStore.replaceStable([["e1", { backendNodeId: 11, tabId: 4, identity }]]);
+    });
+    const res = await handleClick(
+      sm,
+      { session_id: "aa11", ref: "@e1" },
+      { cdp: fake.cdp, tabsApi: fake.tabsApi, reobserve },
+    );
+    expect(reobserve).toHaveBeenCalledOnce();
+    expect(res).toMatchObject({ used_ref: "e1", tab_id: 4 });
+    expect(fake.sent.filter((call) => call.method === "Input.dispatchMouseEvent")).toHaveLength(3);
+  });
+
+  it("does not rebind a connected but hidden element", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const identity = { stableId: "save", role: "button", name: "Save", layer: "active" as const };
+    ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    const fake = makeFakeCdp({
+      "DOM.resolveNode": () => ({ object: { objectId: "live" } }),
+      "Runtime.callFunctionOn": () => ({ result: { value: true } }),
+      "Runtime.releaseObject": () => ({}),
+      "DOM.scrollIntoViewIfNeeded": () => ({}),
+      "DOM.getContentQuads": () => ({ quads: [] }),
+      "DOM.getBoxModel": () => {
+        throw new Error("Could not compute box model.");
+      },
+    });
+    const reobserve = vi.fn(async () => {});
+    const res = await handleClick(
+      sm,
+      { session_id: "aa11", ref: "@e1" },
+      { cdp: fake.cdp, tabsApi: fake.tabsApi, reobserve },
+    );
+    expect(res).toMatchObject({
+      code: "permission_denied",
+      data: { reason: "element_not_visible" },
+    });
+    expect(reobserve).not.toHaveBeenCalled();
+    expect(fake.sent.some((call) => call.method === "Input.dispatchMouseEvent")).toBe(false);
+  });
+
   it("fails closed when a refresh produces duplicate semantic matches", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
     const ctx = await sm.start("aa11");
