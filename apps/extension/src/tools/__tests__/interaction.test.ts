@@ -178,6 +178,33 @@ describe("handleClick", () => {
     expect(fake.sent.filter((call) => call.method === "Input.dispatchMouseEvent")).toHaveLength(3);
   });
 
+  it("uses one healing budget when unknown-ref recovery still finds a detached node", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const identity = { stableId: "save", role: "button", name: "Save", layer: "active" as const };
+    ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    ctx.refStore.replaceStable([]);
+    const fake = makeFakeCdp({
+      "DOM.resolveNode": () => ({ object: { objectId: "detached" } }),
+      "Runtime.callFunctionOn": () => ({ result: { value: false } }),
+      "Runtime.releaseObject": () => ({}),
+    });
+    const reobserve = vi.fn(async () => {
+      ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    });
+    const res = await handleClick(
+      sm,
+      { session_id: "aa11", ref: "@e1" },
+      { cdp: fake.cdp, tabsApi: fake.tabsApi, reobserve },
+    );
+    expect(reobserve).toHaveBeenCalledOnce();
+    expect(res).toMatchObject({
+      code: "permission_denied",
+      data: { reason: "element_not_visible" },
+    });
+    expect(fake.sent.some((call) => call.method === "Input.dispatchMouseEvent")).toBe(false);
+  });
+
   it("does not rebind a connected but hidden element", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
     const ctx = await sm.start("aa11");

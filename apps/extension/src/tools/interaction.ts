@@ -216,19 +216,26 @@ export async function resolveBackendNode(
     };
   }
   if (hasRef) {
+    let healingAttempted = false;
     let resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
     if (isRpcError(resolved) && resolved.data?.reason === "ref_not_found" && reobserve) {
       const prior = ctx.refStore.logicalEntryForRef(params.ref as string);
       if (prior?.tabId === target.tabId) {
+        healingAttempted = true;
         await reobserve(ctx.sessionId, target.tabId);
         if (ctx.refStore.rebindUnique(params.ref as string, target.tabId))
           resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
       }
     }
     if (isRpcError(resolved)) return resolved;
-    if (reobserve && (await backendNodeLiveness(cdp, resolved, target.tabId)) === "detached") {
+    if (
+      reobserve &&
+      !healingAttempted &&
+      (await backendNodeLiveness(cdp, resolved, target.tabId)) === "detached"
+    ) {
       const prior = ctx.refStore.logicalEntryForRef(params.ref as string);
       if (prior?.tabId === target.tabId) {
+        healingAttempted = true;
         await reobserve(ctx.sessionId, target.tabId);
         if (ctx.refStore.rebindUnique(params.ref as string, target.tabId))
           resolved = resolveSnapshotRef(ctx, params.ref as string, target.tabId);
