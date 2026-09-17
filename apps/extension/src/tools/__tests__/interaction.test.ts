@@ -123,6 +123,54 @@ describe("handleClick", () => {
     expect(res).toMatchObject({ code: "not_found", data: { reason: "ref_not_found" } });
   });
 
+  it("self-heals an action once after a same-page DOM replacement", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const identity = { stableId: "save", role: "button", name: "Save", layer: "active" as const };
+    ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    // Retain the logical identity while making the concrete node unavailable.
+    ctx.refStore.replaceStable([]);
+    const fake = makeFakeCdp({
+      "DOM.scrollIntoViewIfNeeded": () => ({}),
+      "DOM.getContentQuads": () => ({ quads: [[10, 20, 110, 20, 110, 60, 10, 60]] }),
+      "Input.dispatchMouseEvent": () => ({}),
+    });
+    const reobserve = vi.fn(async () => {
+      ctx.refStore.replaceStable([["e1", { backendNodeId: 11, tabId: 4, identity }]]);
+    });
+    const res = await handleClick(
+      sm,
+      { session_id: "aa11", ref: "@e1" },
+      { cdp: fake.cdp, tabsApi: fake.tabsApi, reobserve },
+    );
+    expect(reobserve).toHaveBeenCalledOnce();
+    expect(res).toMatchObject({ used_ref: "e1", tab_id: 4 });
+    expect(fake.sent.some((call) => call.method === "Input.dispatchMouseEvent")).toBe(true);
+  });
+
+  it("fails closed when a refresh produces duplicate semantic matches", async () => {
+    const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
+    const ctx = await sm.start("aa11");
+    const identity = { stableId: "save", role: "button", name: "Save", layer: "active" as const };
+    ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
+    ctx.refStore.replaceStable([]);
+    const fake = makeFakeCdp({});
+    const reobserve = vi.fn(async () => {
+      ctx.refStore.replace([
+        ["e1", { backendNodeId: 11, tabId: 4, identity }],
+        ["e2", { backendNodeId: 12, tabId: 4, identity }],
+      ]);
+    });
+    const res = await handleClick(
+      sm,
+      { session_id: "aa11", ref: "@e1" },
+      { cdp: fake.cdp, tabsApi: fake.tabsApi, reobserve },
+    );
+    expect(reobserve).toHaveBeenCalledOnce();
+    expect(res).toMatchObject({ code: "not_found", data: { reason: "ref_not_found" } });
+    expect(fake.sent).toHaveLength(0);
+  });
+
   it("returns not_found when ref belongs to another tab", async () => {
     const sm = new SessionManager({ agentWindow: fakeAgentWindow([100]) });
     const ctx = await sm.start("aa11");

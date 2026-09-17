@@ -22,6 +22,7 @@ export interface ScrollToDeps {
   cdp: CdpRunner;
   tabsApi: ChromeTabsApi;
   signal?: AbortSignal;
+  reobserve?: (sessionId: string, tabId: number) => Promise<void>;
 }
 
 let defaultDeps: { cdp: ChromiumCdp; tabsApi: ChromeTabsApi } | null = null;
@@ -86,7 +87,7 @@ export async function handleScrollTo(
     const denied = enforceAgentWindow(ctx, target, "scroll-to");
     if (denied) return denied;
     const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
-    const node = await resolveBackendNode(cdp, ctx, target, params, "scroll-to");
+    const node = await resolveBackendNode(cdp, ctx, target, params, "scroll-to", deps.reobserve);
     checkActive();
     if (isRpcError(node)) return node;
     deps.cdp.trackSessionTab?.(ctx.sessionId, target.tabId);

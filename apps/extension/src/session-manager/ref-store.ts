@@ -86,6 +86,32 @@ export class RefStore {
     return this.map.get(normaliseRef(ref)) ?? null;
   }
 
+  /** The last semantic entry retained for a logical ref, even after its node is stale. */
+  logicalEntryForRef(ref: string): DomRefEntry | null {
+    const key = normaliseRef(ref);
+    let latest: { entry: DomRefEntry; used: number } | null = null;
+    for (const value of this.logical.values()) {
+      if (value.ref === key && value.entry.kind === "dom" && (!latest || value.used > latest.used))
+        latest = { entry: value.entry, used: value.used };
+    }
+    return latest?.entry ?? null;
+  }
+
+  /** Rebind a stale ref only when its stored identity has one active match. */
+  rebindUnique(ref: string, tabId: number): DomRefEntry | null {
+    const prior = this.logicalEntryForRef(ref);
+    if (!prior || prior.tabId !== tabId || !prior.identity) return null;
+    const matches = [...this.map.entries()].filter(([, entry]) => {
+      if (entry.kind !== "dom" || entry.tabId !== tabId || entry.identity?.layer !== "active")
+        return false;
+      if (!sameScope(prior, entry)) return false;
+      return identityKey(entry.identity, entry.tabId) === identityKey(prior.identity, prior.tabId);
+    });
+    if (matches.length !== 1 || matches[0][1].kind !== "dom") return null;
+    this.map.set(normaliseRef(ref), matches[0][1]);
+    return matches[0][1];
+  }
+
   /**
    * Replace the entire store with a new ref → CDP node identity mapping.
    * Used after every fresh `tool.snapshot`.
