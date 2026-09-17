@@ -349,6 +349,15 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
+    fn bundled_skill_matches_stable_ref_and_lease_contract() {
+        assert!(DEFAULT_SKILL_MD.contains("Same-page stable logical"));
+        assert!(DEFAULT_SKILL_MD.contains("automatically reacquires"));
+        assert!(DEFAULT_SKILL_MD.contains("If another controller holds it"));
+        assert!(DEFAULT_SKILL_MD.contains("real navigation/page/origin identity changes"));
+        assert!(DEFAULT_SKILL_MD.contains("stop acting rather than refreshing"));
+    }
+
+    #[test]
     fn install_writes_skill_md() {
         let tmp = TempDir::new().unwrap();
         let home = tmp.path().to_path_buf();

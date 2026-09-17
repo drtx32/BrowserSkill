@@ -82,6 +82,26 @@ impl LeaseRegistry {
         Err(self.status_locked(&leases, browser_id, now))
     }
 
+    /// Recover mutation authority after this controller's lease naturally
+    /// expires, but only while the browser lease is still free.
+    pub fn require_or_reacquire(&self, browser_id: &str, owner: &str) -> Result<(), BrowserLeaseStatus> {
+        let now = now_ms();
+        let mut leases = self.leases.lock().expect("lease registry poisoned");
+        let Some(existing) = leases.get(browser_id).cloned() else {
+            return Err(BrowserLeaseStatus::free(browser_id));
+        };
+        if existing.expires_at_ms > now {
+            return if existing.owner == owner { Ok(()) } else { Err(public_status(browser_id, &existing, now)) };
+        }
+        if existing.owner != owner {
+            return Err(BrowserLeaseStatus::free(browser_id));
+        }
+        let token = format!("{owner}-{}", uuid::Uuid::new_v4());
+        let lease = Lease { owner: owner.into(), token, acquired_at_ms: now, expires_at_ms: now + DEFAULT_LEASE_TTL_MS as i64 };
+        leases.insert(browser_id.into(), lease);
+        Ok(())
+    }
+
     /// Renew on accepted mutation dispatches so a healthy controller does not
     /// lose authority mid-task. The hard cap is still enforced by `renew`.
     pub fn touch(&self, browser_id: &str, owner: &str) {
@@ -97,20 +117,18 @@ impl LeaseRegistry {
 
     pub fn status(&self, browser_id: &str) -> BrowserLeaseStatus {
         let now = now_ms();
-        let mut leases = self.leases.lock().expect("lease registry poisoned");
-        if leases.get(browser_id).is_some_and(|lease| lease.expires_at_ms <= now) { leases.remove(browser_id); }
+        let leases = self.leases.lock().expect("lease registry poisoned");
         self.status_locked(&leases, browser_id, now)
     }
 
     pub fn status_all(&self) -> Vec<BrowserLeaseStatus> {
         let now = now_ms();
-        let mut leases = self.leases.lock().expect("lease registry poisoned");
-        leases.retain(|_, lease| lease.expires_at_ms > now);
-        leases.iter().map(|(browser, lease)| public_status(browser, lease, now)).collect()
+        let leases = self.leases.lock().expect("lease registry poisoned");
+        leases.iter().filter(|(_, lease)| lease.expires_at_ms > now).map(|(browser, lease)| public_status(browser, lease, now)).collect()
     }
 
     fn status_locked(&self, leases: &HashMap<String, Lease>, browser_id: &str, now: i64) -> BrowserLeaseStatus {
-        leases.get(browser_id).map_or_else(|| BrowserLeaseStatus::free(browser_id), |lease| public_status(browser_id, lease, now))
+        leases.get(browser_id).filter(|lease| lease.expires_at_ms > now).map_or_else(|| BrowserLeaseStatus::free(browser_id), |lease| public_status(browser_id, lease, now))
     }
 }
 
@@ -170,5 +188,22 @@ mod tests {
         assert_ne!(old.token, fresh.token);
         assert!(leases.require("browser", "writer-a").is_err());
         assert!(leases.require("browser", "writer-b").is_ok());
+    }
+
+    #[test]
+    fn expired_lease_is_lazily_reacquired_only_by_same_owner() {
+        let leases = LeaseRegistry::new();
+        leases.acquire("browser", "writer-a", Some(1_000)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(1_050));
+        assert!(leases.require_or_reacquire("browser", "writer-a").is_ok());
+        assert!(leases.require_or_reacquire("browser", "writer-b").is_err());
+    }
+
+    #[test]
+    fn explicit_release_does_not_leave_a_reacquire_ticket() {
+        let leases = LeaseRegistry::new();
+        let first = leases.acquire("browser", "writer-a", Some(1_000)).unwrap();
+        leases.release("browser", "writer-a", first.token.as_deref()).unwrap();
+        assert!(leases.require_or_reacquire("browser", "writer-a").is_err());
     }
 }
