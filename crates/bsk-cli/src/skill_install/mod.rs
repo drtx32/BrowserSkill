@@ -350,11 +350,20 @@ mod tests {
 
     #[test]
     fn bundled_skill_matches_stable_ref_and_lease_contract() {
-        assert!(DEFAULT_SKILL_MD.contains("Same-page stable logical"));
-        assert!(DEFAULT_SKILL_MD.contains("automatically reacquires"));
-        assert!(DEFAULT_SKILL_MD.contains("If another controller holds it"));
-        assert!(DEFAULT_SKILL_MD.contains("real navigation/page/origin identity changes"));
-        assert!(DEFAULT_SKILL_MD.contains("stop acting rather than refreshing"));
+        let normalized = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let skill = normalized(DEFAULT_SKILL_MD);
+        for contract in [
+            "Same-page stable logical",
+            "automatically reacquires",
+            "If another controller holds it",
+            "real navigation/page/origin identity changes",
+            "stop acting rather than refreshing",
+        ] {
+            assert!(
+                normalized(&skill).contains(contract),
+                "missing SKILL contract: {contract}"
+            );
+        }
     }
 
     #[test]
