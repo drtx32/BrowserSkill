@@ -1080,6 +1080,19 @@ async fn handle_session_start(
         && params.height.is_none()
         && params.focused.is_none()
     {
+        // `reuse_default` is an explicit bootstrap/session-control action.
+        // It is the only mutation-time-independent recovery path for a
+        // daemon restart that cleared the in-memory lease table; unlike a
+        // normal tool dispatch it may reacquire a missing lease record.
+        if let Err(crate::daemon::lease::AcquireError::Held(holder)) =
+            state.leases.acquire(&existing.browser_id.0, &existing.id.0, None)
+        {
+            return Err(RpcError {
+                code: ErrorCode::PermissionDenied,
+                message: "browser is already controlled by another active session".into(),
+                data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
+            });
+        }
         return Ok(serde_json::to_value(CliSessionStartResult {
             interaction: existing.interaction,
             session_id: existing.id.0,

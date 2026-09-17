@@ -83,31 +83,29 @@ impl LeaseRegistry {
     }
 
     /// Recover mutation authority after this controller's lease naturally
-    /// expires, but only while the browser lease is still free. Also
-    /// acquires fresh when the daemon lost the prior lease record (e.g.
-    /// restart) but the same logical session is still bound to this
-    /// browser — the browser is provably free because no record exists,
-    /// so the new owner cannot be stealing from anyone.
+    /// expires, but only while the browser lease is still free. A missing
+    /// record is deliberately not enough: explicit release and daemon
+    /// restart are both represented by an empty table, so those paths must
+    /// use an explicit control/bootstrap action instead.
     pub fn require_or_reacquire(&self, browser_id: &str, owner: &str) -> Result<(), BrowserLeaseStatus> {
         let now = now_ms();
         let mut leases = self.leases.lock().expect("lease registry poisoned");
-        if let Some(existing) = leases.get(browser_id).cloned() {
-            if existing.expires_at_ms > now {
-                return if existing.owner == owner {
-                    Ok(())
-                } else {
-                    Err(public_status(browser_id, &existing, now))
-                };
-            }
-            // Expired record: only the prior owner may rehydrate; any
-            // other caller must explicitly acquire (or wait for natural
-            // expiry).
-            if existing.owner != owner {
-                return Err(BrowserLeaseStatus::free(browser_id));
-            }
+        let Some(existing) = leases.get(browser_id).cloned() else {
+            return Err(BrowserLeaseStatus::free(browser_id));
+        };
+        if existing.expires_at_ms > now {
+            return if existing.owner == owner {
+                Ok(())
+            } else {
+                Err(public_status(browser_id, &existing, now))
+            };
         }
-        // Either no record (browser free, lease map empty) or same-owner
-        // expired record. The browser is free in both cases; acquire fresh.
+        // An expired record is the natural-expiry provenance marker. Only
+        // the same session may rehydrate it; other callers must explicitly
+        // acquire (or wait for natural expiry).
+        if existing.owner != owner {
+            return Err(BrowserLeaseStatus::free(browser_id));
+        }
         let token = format!("{owner}-{}", uuid::Uuid::new_v4());
         let lease = Lease {
             owner: owner.into(),
@@ -217,33 +215,24 @@ mod tests {
     }
 
     #[test]
-    fn explicit_release_then_same_owner_reacquires_fresh() {
-        // After explicit release the browser is free. The next mutation
-        // from the same owner must auto-acquire fresh — the prior
-        // implementation treated "no record" as a hard fail, which broke
-        // ELI-242 gate #3 once a daemon restart also produced a missing
-        // record (in-memory lease map) for a still-bound session.
+    fn explicit_release_does_not_leave_a_reacquire_ticket() {
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(1_000)).unwrap();
         leases.release("browser", "writer-a", first.token.as_deref()).unwrap();
-        assert!(leases.require_or_reacquire("browser", "writer-a").is_ok());
+        assert!(leases.require_or_reacquire("browser", "writer-a").is_err());
+        // A deliberate control/bootstrap action may reacquire explicitly.
+        assert!(leases.acquire("browser", "writer-a", Some(5_000)).is_ok());
     }
 
     #[test]
-    fn fresh_session_without_lease_record_lazily_acquires() {
-        // Daemon restart drops the in-memory lease map while the logical
-        // session is still bound to the browser. The next mutation from
-        // the same session must safely auto-acquire without a manual
-        // `lease acquire`, because the browser is provably free — no
-        // record means no other owner can possibly hold it.
+    fn missing_record_requires_explicit_control_reacquire() {
+        // Daemon restart drops the in-memory lease map. Mutation-time
+        // recovery must remain fail-closed; bootstrap/session control owns
+        // the explicit acquire path for a still-live logical session.
         let leases = LeaseRegistry::new();
-        assert!(leases.require_or_reacquire("browser", "session-x").is_ok());
+        assert!(leases.require_or_reacquire("browser", "session-x").is_err());
+        assert!(leases.acquire("browser", "session-x", Some(5_000)).is_ok());
         assert!(leases.require("browser", "session-x").is_ok());
-        let other = leases.require_or_reacquire("browser", "session-y");
-        let BrowserLeaseStatus { owner, token, remaining_ms, .. } = other.unwrap_err();
-        assert_eq!(owner.as_deref(), Some("session-x"));
-        assert_eq!(token, None);
-        assert!(remaining_ms.unwrap_or(0) > 0);
     }
 
     #[test]
