@@ -228,6 +228,24 @@ export default defineBackground(() => {
   // state; it never infers or mutates ownership from event ordering.
   chrome.tabs.onCreated.addListener((tab) => {
     if (typeof tab.windowId !== "number" || typeof tab.id !== "number") return;
+    const adopted = sessions.adoptPopupTab({
+      id: tab.id,
+      openerTabId: tab.openerTabId,
+      windowId: tab.windowId,
+    });
+    if (adopted) {
+      onOverlaySessionStateChanged();
+      // Keep the adopted popup inside the session's Agent Window so the
+      // existing tab lifecycle guards and stop cleanup remain authoritative.
+      void chrome.tabs
+        .move(tab.id, { windowId: adopted.agentWindowId, index: -1 })
+        .catch(() => {
+          // Ownership is retained; session_stop can still remove the concrete
+          // agent-created tab if Chrome rejects the move or the tab vanished.
+        });
+      void pushOverlayStateToTab(tab.id, overlayStateForWindow(adopted.agentWindowId));
+      return;
+    }
     if (!sessions.findByWindowId(tab.windowId)) return;
     void pushOverlayStateForTab(tab.id, tab.windowId);
   });

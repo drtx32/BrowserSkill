@@ -39,6 +39,21 @@ export interface SessionManagerOptions {
   now?: () => number;
 }
 
+export interface PopupLineageTab {
+  id: number;
+  openerTabId?: number;
+  windowId?: number;
+}
+
+interface PendingPopupAction {
+  sessionId: string;
+  openerTabId: number;
+  expiresAtMs: number;
+}
+
+/** Maximum time a browser action may produce its asynchronous popup. */
+const POPUP_ACTION_TTL_MS = 2500;
+
 /** Options for starting a session's Agent Window. */
 export interface SessionStartOptions {
   /** Optional Agent Window outer size in CSS pixels. */
@@ -97,6 +112,7 @@ export class SessionManager {
   private readonly windowIndex = new Map<number, string>();
   private readonly borrowReservations = new Map<number, string>();
   private readonly expectedWindowClosures = new WeakSet<SessionContext>();
+  private readonly pendingPopupActions = new Map<string, PendingPopupAction>();
   private readonly agentWindow: AgentWindowApi;
   private readonly now: () => number;
 
@@ -140,6 +156,60 @@ export class SessionManager {
 
   invalidateTabRefs(tabId: number): void {
     for (const ctx of this.sessions.values()) ctx.refStore.invalidateTab(tabId);
+  }
+
+  /**
+   * Arm one narrowly scoped popup adoption opportunity. The opener must
+   * already be controlled by this session; URL/title and window placement
+   * are deliberately not part of the trust decision.
+   */
+  armPopupAction(sessionId: string, openerTabId: number): void {
+    const ctx = this.sessions.get(sessionId);
+    if (!ctx || !isAgentControlledTab(ctx, openerTabId)) return;
+    if (this.findControllingSession(openerTabId, sessionId)) return;
+    this.pendingPopupActions.set(sessionId, {
+      sessionId,
+      openerTabId,
+      expiresAtMs: this.now() + POPUP_ACTION_TTL_MS,
+    });
+  }
+
+  /**
+   * Consume a single high-confidence opener/action match. Multiple possible
+   * sessions are treated as ambiguous and fail closed.
+   */
+  adoptPopupTab(tab: PopupLineageTab): SessionContext | null {
+    if (!Number.isSafeInteger(tab.id) || typeof tab.openerTabId !== "number") return null;
+    const now = this.now();
+    const matches: Array<[string, PendingPopupAction, SessionContext]> = [];
+    for (const [sessionId, pending] of this.pendingPopupActions) {
+      if (pending.expiresAtMs <= now || !this.sessions.has(sessionId)) {
+        this.pendingPopupActions.delete(sessionId);
+        continue;
+      }
+      const ctx = this.sessions.get(sessionId)!;
+      if (
+        pending.openerTabId === tab.openerTabId &&
+        isAgentControlledTab(ctx, tab.openerTabId) &&
+        !this.findControllingSession(tab.openerTabId, sessionId)
+      ) {
+        matches.push([sessionId, pending, ctx]);
+      }
+    }
+    if (matches.length !== 1) return null;
+    const [sessionId, , ctx] = matches[0];
+    this.pendingPopupActions.delete(sessionId);
+    ctx.agentCreatedTabs.add(tab.id);
+    return ctx;
+  }
+
+  private findControllingSession(tabId: number, currentSessionId: string): string | null {
+    for (const ctx of this.sessions.values()) {
+      if (ctx.sessionId !== currentSessionId && isAgentControlledTab(ctx, tabId)) {
+        return ctx.sessionId;
+      }
+    }
+    return this.findBorrowingSession(tabId, currentSessionId);
   }
 
   /**
@@ -278,6 +348,7 @@ export class SessionManager {
     }
     this.sessions.delete(sessionId);
     this.windowIndex.delete(ctx.agentWindowId);
+    this.pendingPopupActions.delete(sessionId);
     return ctx;
   }
 
