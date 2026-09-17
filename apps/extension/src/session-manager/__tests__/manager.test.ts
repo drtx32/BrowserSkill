@@ -152,6 +152,49 @@ describe("SessionManager", () => {
   });
 
   describe("explicit tab claims", () => {
+    it("adopts a child with a controlled opener during the bounded action window", async () => {
+      let now = 1000;
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow(), now: () => now });
+      const ctx = await sm.start("aa11");
+      sm.armPopupAction("aa11", 0);
+
+      expect(sm.adoptPopupTab({ id: 42, openerTabId: 0, windowId: 200 })).toBe(ctx);
+      expect(ctx.agentCreatedTabs.has(42)).toBe(true);
+      expect(sm.adoptPopupTab({ id: 43, openerTabId: 0, windowId: 200 })).toBeNull();
+      now += 3000;
+      sm.armPopupAction("aa11", 0);
+      now += 3000;
+      expect(sm.adoptPopupTab({ id: 44, openerTabId: 0 })).toBeNull();
+    });
+
+    it.each([
+      ["user-created", { id: 42 }],
+      ["missing opener", { id: 43, openerTabId: undefined }],
+      ["ambiguous opener", { id: 44, openerTabId: 0 }],
+    ])("fails closed for %s popup lineage", async (label, tab) => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
+      const a = await sm.start("aa11");
+      await sm.start("bb22");
+      if (label === "ambiguous opener") {
+        sm.armPopupAction("aa11", 0);
+        sm.armPopupAction("bb22", 0);
+      }
+      expect(sm.adoptPopupTab(tab)).toBeNull();
+      expect(a.agentCreatedTabs.has(tab.id)).toBe(false);
+    });
+
+    it("denies cross-session opener ownership and clears pending state on stop", async () => {
+      const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
+      const a = await sm.start("aa11");
+      const b = await sm.start("bb22");
+      a.agentCreatedTabs.add(9);
+      sm.armPopupAction("bb22", 9);
+      expect(sm.adoptPopupTab({ id: 42, openerTabId: 9 })).toBeNull();
+      sm.armPopupAction("aa11", 0);
+      await sm.stop("aa11");
+      expect(sm.adoptPopupTab({ id: 43, openerTabId: 0 })).toBeNull();
+      expect(b.agentCreatedTabs.has(43)).toBe(false);
+    });
     it("claims the exact home tab returned by AgentWindowApi", async () => {
       const sm = new SessionManager({ agentWindow: fakeAgentWindow() });
       const ctx = await sm.start("aa11");

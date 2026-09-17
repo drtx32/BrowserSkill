@@ -265,9 +265,11 @@ export class ToolDispatcher {
     this.inflightAbortControllers.set(req.id, ac);
     let body: ResponseFrame;
     let startedSession: string | null = null;
+    const popupAction = popupActionForRequest(req);
     try {
       const sessionId = sessionIdForBrowserControlMethod(req);
       if (sessionId) this.onBrowserControlResumed?.(sessionId);
+      if (popupAction && sessionId) this.sessions.armPopupAction(sessionId, popupAction.tabId);
       // Best-effort context must never prevent the requested operation.
       try {
         const context = await auditContext(req, this.sessions);
@@ -938,6 +940,21 @@ function sessionIdForBrowserControlMethod(req: RequestFrame): string | null {
     default:
       return null;
   }
+}
+
+function popupActionForRequest(req: RequestFrame): { tabId: number } | null {
+  const popupCapable = new Set([
+    "tool.click",
+    "tool.fill",
+    "tool.press",
+    "tool.select",
+    "tool.evaluate",
+    "tool.navigate",
+    "tool.reload",
+  ]);
+  if (!popupCapable.has(req.method)) return null;
+  const tabId = (req.params as { tab_id?: unknown } | undefined)?.tab_id;
+  return typeof tabId === "number" && Number.isSafeInteger(tabId) && tabId > 0 ? { tabId } : null;
 }
 
 async function bypassOverlay(tabId: number, enabled: boolean): Promise<void> {
