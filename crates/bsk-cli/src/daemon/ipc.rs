@@ -443,7 +443,7 @@ async fn handle_tool_dispatch(
     };
     if method.requires_control_lease()
         && let Some(session) = state.sessions.get(&session_id)
-        && let Err(holder) = state.leases.require(&session.browser_id.0, &session_id.0)
+        && let Err(holder) = state.leases.require_or_reacquire(&session.browser_id.0, &session_id.0)
     {
         return ResponseBody::Err(RpcError {
             code: ErrorCode::PermissionDenied,
