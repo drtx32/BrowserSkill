@@ -56,6 +56,33 @@ export interface EvidenceAdapterOptions {
   retainUrlPath?: boolean;
   /** Inject an ID source for deterministic tests. */
   id?: () => string;
+  /** Maximum number of distinct dirty regions retained before a refresh is required. */
+  maxDirtyRegions?: number;
+}
+
+export interface SemanticRecord {
+  id: string;
+  region_id?: string | null;
+  stable_ref?: string | null;
+  [key: string]: unknown;
+}
+
+export interface SemanticChangedRecord {
+  before: SemanticRecord;
+  after: SemanticRecord;
+  evidence: string[];
+}
+
+export interface SemanticDelta {
+  page_instance_id: string;
+  from_revision: number;
+  to_revision: number;
+  added: SemanticRecord[];
+  changed: SemanticChangedRecord[];
+  removed: string[];
+  dirty_regions: string[];
+  completeness: EvidenceCompleteness;
+  fallback_reason: string | null;
 }
 
 const SECRET_KEYS = /^(?:password|passcode|token|secret|cookie|authorization|credential|file_contents?|script(?:_body)?|screenshot|image)$/i;
@@ -107,10 +134,17 @@ export class ShadowEvidenceAdapter {
   private readonly retainUrlPath: boolean;
   private readonly id: () => string;
   private lastEventId = new Map<string, string>();
+  private readonly maxDirtyRegions: number;
+  private readonly snapshots = new Map<string, Map<string, SemanticRecord>>();
+  private readonly revisions = new Map<string, number>();
+  private readonly dirtyRegions = new Map<string, Set<string>>();
+  private readonly dirtyReasons = new Map<string, Set<string>>();
+  private readonly incomplete = new Map<string, string>();
 
   constructor(options: EvidenceAdapterOptions = {}) {
     this.retainUrlPath = options.retainUrlPath ?? false;
     this.id = options.id ?? defaultId;
+    this.maxDirtyRegions = options.maxDirtyRegions ?? 256;
   }
 
   capture(input: WikiEvidenceInput): WikiEvidenceEvent {
@@ -132,11 +166,92 @@ export class ShadowEvidenceAdapter {
       events.push(event);
       this.eventsByPage.set(input.page_instance_id, events);
       this.lastEventId.set(input.page_instance_id, event.event_id);
+      const regionId = typeof input.payload === "object" && input.payload !== null && !Array.isArray(input.payload)
+        ? (input.payload as Record<string, unknown>).region_id
+        : null;
+      if (input.kind === "mutation") this.markDirty(input.page_instance_id, typeof regionId === "string" ? regionId : null);
     }
     return event;
   }
 
   events(pageInstanceId: string): readonly WikiEvidenceEvent[] {
     return this.eventsByPage.get(pageInstanceId) ?? [];
+  }
+
+  /**
+   * Record a mutation without pretending that the mutation itself is a
+   * semantic snapshot. Multiple mutations for one region are coalesced until
+   * the next snapshot. Overflow and ambiguous identity are sticky until a
+   * caller supplies a fresh full snapshot.
+   */
+  markDirty(pageInstanceId: string, regionId: string | null, reason = "structure"): void {
+    if (!regionId) {
+      this.incomplete.set(pageInstanceId, "ambiguous_region_identity");
+      return;
+    }
+    const regions = this.dirtyRegions.get(pageInstanceId) ?? new Set<string>();
+    regions.add(regionId);
+    if (regions.size > this.maxDirtyRegions) {
+      this.incomplete.set(pageInstanceId, "mutation_queue_overflow");
+    }
+    this.dirtyRegions.set(pageInstanceId, regions);
+    const reasons = this.dirtyReasons.get(pageInstanceId) ?? new Set<string>();
+    reasons.add(reason);
+    this.dirtyReasons.set(pageInstanceId, reasons);
+  }
+
+  /** Apply a bounded semantic snapshot and emit a conservative delta. */
+  applySnapshot(pageInstanceId: string, records: readonly SemanticRecord[], fromRevision = 0): SemanticDelta {
+    const previous = this.snapshots.get(pageInstanceId) ?? new Map<string, SemanticRecord>();
+    const next = new Map<string, SemanticRecord>();
+    let reason = this.incomplete.get(pageInstanceId) ?? null;
+    const refs = new Map<string, string>();
+    for (const record of records) {
+      if (!record.id || next.has(record.id)) reason ??= "ambiguous_record_identity";
+      if (record.stable_ref) {
+        const owner = refs.get(record.stable_ref);
+        if (owner && owner !== record.id) reason ??= "conflicting_stable_ref";
+        refs.set(record.stable_ref, record.id);
+      }
+      if (record.id) next.set(record.id, record);
+    }
+    const added: SemanticRecord[] = [];
+    const changed: SemanticChangedRecord[] = [];
+    const removed: string[] = [];
+    if (!reason) {
+      for (const [id, record] of next) {
+        const before = previous.get(id);
+        if (!before) added.push(record);
+        else if (JSON.stringify(before) !== JSON.stringify(record)) changed.push({ before, after: record, evidence: [] });
+      }
+      for (const id of previous.keys()) if (!next.has(id)) removed.push(id);
+      this.snapshots.set(pageInstanceId, next);
+    }
+    const dirty = [...(this.dirtyRegions.get(pageInstanceId) ?? [])];
+    const nextRevision = Math.max(fromRevision, this.revisions.get(pageInstanceId) ?? fromRevision) + 1;
+    this.revisions.set(pageInstanceId, nextRevision);
+    const delta: SemanticDelta = {
+      page_instance_id: pageInstanceId,
+      from_revision: fromRevision,
+      to_revision: nextRevision,
+      added: reason ? [] : added,
+      changed: reason ? [] : changed,
+      removed: reason ? [] : removed,
+      dirty_regions: dirty,
+      completeness: reason ? "full_refresh_required" : "complete",
+      fallback_reason: reason,
+    };
+    this.dirtyRegions.delete(pageInstanceId);
+    this.dirtyReasons.delete(pageInstanceId);
+    this.incomplete.delete(pageInstanceId);
+    return delta;
+  }
+
+  /** Navigation creates a new identity; old snapshots must not be reused. */
+  invalidate(pageInstanceId: string, reason = "navigation"): void {
+    this.snapshots.delete(pageInstanceId);
+    this.dirtyRegions.delete(pageInstanceId);
+    this.dirtyReasons.delete(pageInstanceId);
+    this.incomplete.set(pageInstanceId, reason);
   }
 }

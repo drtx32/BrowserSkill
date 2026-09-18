@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
-use bsk_protocol::{Completeness, EventSource, PageInstance, SemanticDelta, WikiEvent,
+use bsk_protocol::{ChangedRecord, Completeness, EventSource, PageInstance, SemanticDelta, WikiEvent,
     WikiScope, WIKI_SCHEMA_VERSION};
 use bsk_protocol::wiki::EventKind as WikiEventKind;
 use serde::{Deserialize, Serialize};
@@ -37,12 +37,13 @@ struct PersistedStore {
 pub struct ShadowWikiStore {
     root: Option<PathBuf>,
     state: Mutex<PersistedStore>,
+    load_failed: bool,
 }
 
 impl ShadowWikiStore {
     pub fn new(root: Option<PathBuf>) -> Self {
-        let store = Self { root, state: Mutex::new(PersistedStore::default()) };
-        let _ = store.load();
+        let mut store = Self { root, state: Mutex::new(PersistedStore::default()), load_failed: false };
+        if store.load().is_err() { store.load_failed = true; }
         store
     }
 
@@ -61,11 +62,11 @@ impl ShadowWikiStore {
             schema_version: WIKI_SCHEMA_VERSION.into(),
             page_instance_id: Uuid::new_v4().to_string(),
             scope, url, title, navigation_epoch, revision: 0,
-            completeness: Completeness::Complete, active: true, invalidated_at: None,
+            completeness: if self.load_failed { Completeness::FullRefreshRequired } else { Completeness::Complete }, active: true, invalidated_at: None,
         };
         let mut state = self.state.lock().expect("wiki store mutex poisoned");
         state.pages.insert(page.page_instance_id.clone(), PersistedPage { page: page.clone(), events: Vec::new() });
-        self.persist_locked(&state)?;
+        self.persist_or_degrade(&mut state)?;
         Ok(page)
     }
 
@@ -83,7 +84,7 @@ impl ShadowWikiStore {
                 false
             };
             if known_page {
-                self.persist_locked(&state)?;
+                self.persist_or_degrade(&mut state)?;
             }
             bail!("wiki event payload exceeds 64 KiB; full refresh required");
         }
@@ -94,7 +95,7 @@ impl ShadowWikiStore {
         }
         if state.pages.get(page_id).context("unknown wiki page instance")?.events.len() >= MAX_EVENTS_PER_PAGE {
             state.pages.get_mut(page_id).expect("page checked above").page.completeness = Completeness::FullRefreshRequired;
-            self.persist_locked(&state)?;
+            self.persist_or_degrade(&mut state)?;
             bail!("wiki event history limit reached; full refresh required");
         }
         let event = {
@@ -110,7 +111,7 @@ impl ShadowWikiStore {
             persisted.events.push(event.clone());
             event
         };
-        self.persist_locked(&state)?;
+        self.persist_or_degrade(&mut state)?;
         Ok(event)
     }
 
@@ -125,15 +126,55 @@ impl ShadowWikiStore {
         persisted.page.revision = event.revision;
         persisted.events.push(event);
         drop(persisted);
-        self.persist_locked(&state)
+        self.persist_or_degrade(&mut state)
     }
 
     pub fn delta(&self, page_id: &str, from_revision: u64) -> Result<SemanticDelta> {
         let state = self.state.lock().expect("wiki store mutex poisoned");
         let persisted = state.pages.get(page_id).context("unknown wiki page instance")?;
         if from_revision > persisted.page.revision { bail!("revision is ahead of page instance"); }
-        let events: Vec<Value> = persisted.events.iter().filter(|e| e.revision > from_revision).map(|e| json!({"event_id": e.event_id, "kind": e.kind, "source": e.source, "payload": e.payload, "revision": e.revision})).collect();
-        Ok(SemanticDelta { schema_version: WIKI_SCHEMA_VERSION.into(), page_instance_id: page_id.into(), from_revision, to_revision: persisted.page.revision, added: events, changed: Vec::new(), removed: Vec::new(), dirty_regions: Vec::new(), completeness: persisted.page.completeness.clone(), fallback_reason: (persisted.page.completeness == Completeness::FullRefreshRequired).then_some("persistence_or_capture_incomplete".into()) })
+        let mut added = Vec::new();
+        let mut changed = Vec::new();
+        let mut removed = Vec::new();
+        let mut dirty_regions = Vec::new();
+        let mut fallback_reason = None;
+        for event in persisted.events.iter().filter(|e| e.revision > from_revision) {
+            let Some(payload) = event.payload.as_object() else {
+                fallback_reason.get_or_insert("ambiguous_event_payload".to_string());
+                continue;
+            };
+            if let Some(values) = payload.get("added").and_then(Value::as_array) { added.extend(values.iter().cloned()); }
+            if let Some(values) = payload.get("changed").and_then(Value::as_array) {
+                for value in values {
+                    match serde_json::from_value::<ChangedRecord>(value.clone()) {
+                        Ok(record) => changed.push(record),
+                        Err(_) => { fallback_reason.get_or_insert("ambiguous_changed_record".to_string()); }
+                    }
+                }
+            }
+            if let Some(values) = payload.get("removed").and_then(Value::as_array) {
+                for value in values {
+                    if let Some(id) = value.as_str() { removed.push(id.to_string()); }
+                    else { fallback_reason.get_or_insert("ambiguous_removed_identity".to_string()); }
+                }
+            }
+            if let Some(values) = payload.get("dirty_regions").and_then(Value::as_array) {
+                for value in values {
+                    if let Some(id) = value.as_str() { dirty_regions.push(id.to_string()); }
+                    else { fallback_reason.get_or_insert("ambiguous_region_identity".to_string()); }
+                }
+            }
+            if !matches!(&event.completeness, Completeness::Complete) {
+                fallback_reason.get_or_insert(format!("event_{:?}", &event.completeness).to_lowercase());
+            }
+        }
+        let completeness = if self.load_failed || persisted.page.completeness == Completeness::FullRefreshRequired || fallback_reason.is_some() {
+            Completeness::FullRefreshRequired
+        } else { persisted.page.completeness.clone() };
+        if completeness == Completeness::FullRefreshRequired && fallback_reason.is_none() {
+            fallback_reason = Some(if self.load_failed { "persistence_load_failed" } else { "persistence_or_capture_incomplete" }.into());
+        }
+        Ok(SemanticDelta { schema_version: WIKI_SCHEMA_VERSION.into(), page_instance_id: page_id.into(), from_revision, to_revision: persisted.page.revision, added, changed, removed, dirty_regions, completeness, fallback_reason })
     }
 
     fn load(&self) -> Result<()> {
@@ -166,6 +207,18 @@ impl ShadowWikiStore {
         fs::remove_file(marker)?;
         Ok(())
     }
+
+    fn persist_or_degrade(&self, state: &mut PersistedStore) -> Result<()> {
+        match self.persist_locked(state) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                for page in state.pages.values_mut() {
+                    page.page.completeness = Completeness::FullRefreshRequired;
+                }
+                Err(error.context("wiki persistence failed; full refresh required"))
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -193,5 +246,34 @@ mod tests {
         let page = store.establish_page(scope(), None, None, 0).unwrap();
         assert!(store.ingest(&page.page_instance_id, None, WikiEventKind::Observation, EventSource::Dom, Value::String("x".repeat(MAX_EVENT_PAYLOAD_BYTES)), Completeness::Complete).is_err());
         assert_eq!(store.page(&page.page_instance_id).unwrap().revision, 0);
+    }
+
+    #[test]
+    fn delta_aggregates_semantic_changes_and_dirty_regions() {
+        let store = ShadowWikiStore::new(None);
+        let page = store.establish_page(scope(), None, None, 0).unwrap();
+        store.ingest(&page.page_instance_id, Some("m1".into()), WikiEventKind::Mutation, EventSource::Dom, json!({
+            "added": [{"id": "new", "region_id": "list"}],
+            "changed": [{"before": {"id": "old"}, "after": {"id": "old", "label": "updated"}, "evidence": ["m1"]}],
+            "removed": ["gone"], "dirty_regions": ["list"]
+        }), Completeness::Complete).unwrap();
+        let delta = store.delta(&page.page_instance_id, 0).unwrap();
+        assert_eq!(delta.added.len(), 1);
+        assert_eq!(delta.changed.len(), 1);
+        assert_eq!(delta.removed, vec!["gone"]);
+        assert_eq!(delta.dirty_regions, vec!["list"]);
+        assert_eq!(delta.completeness, Completeness::Complete);
+    }
+
+    #[test]
+    fn malformed_semantic_identity_forces_full_refresh() {
+        let store = ShadowWikiStore::new(None);
+        let page = store.establish_page(scope(), None, None, 0).unwrap();
+        store.ingest(&page.page_instance_id, Some("m1".into()), WikiEventKind::Mutation, EventSource::Dom, json!({
+            "removed": [{"not": "an id"}]
+        }), Completeness::Complete).unwrap();
+        let delta = store.delta(&page.page_instance_id, 0).unwrap();
+        assert_eq!(delta.completeness, Completeness::FullRefreshRequired);
+        assert_eq!(delta.fallback_reason.as_deref(), Some("ambiguous_removed_identity"));
     }
 }
