@@ -51,6 +51,13 @@ export type {
 export type {
   CollectVirtualizedOptions,
   CollectVirtualizedResult,
+  FrontierExhaustion,
+  FrontierIdentityStatus,
+  ListFrontier,
+  ListFrontierContext,
+  ListFrontierUpdate,
+  ListFrontierWindow,
+  RestoreListFrontierOptions,
   VirtualizedAdvance,
   VirtualizedCompleteness,
   VirtualizedListAnalysis,
@@ -59,5 +66,10 @@ export type {
 export {
   analyzeVirtualizedLists,
   collectVirtualizedSegments,
+  createListFrontier,
+  invalidateListFrontier,
+  recordListFrontierWindow,
+  restoreListFrontier,
+  serializeListFrontier,
   stableItemFingerprint,
 } from "./virtualized";

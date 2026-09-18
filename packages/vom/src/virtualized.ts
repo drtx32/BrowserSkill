@@ -21,6 +21,185 @@ export interface VirtualizedAnalysisOptions {
   minimumItems?: number;
 }
 
+export type FrontierExhaustion = "unknown" | "proven";
+export type FrontierIdentityStatus = "stable" | "ambiguous" | "inconsistent";
+
+/**
+ * The identity that makes persisted discovery safe to resume.  A frontier is
+ * only a discovery record: it never restores a live DOM/action capability.
+ */
+export interface ListFrontierContext {
+  documentIdentity: string;
+  origin: string;
+  sessionId?: string;
+  ownerIdentity?: string;
+}
+
+export interface ListFrontier<T> {
+  version: 1;
+  regionIdentity: string;
+  context: ListFrontierContext;
+  items: T[];
+  fingerprints: string[];
+  nextProbe: number;
+  segments: number;
+  exhaustion: FrontierExhaustion;
+  completeness: VirtualizedCompleteness;
+  identityStatus: FrontierIdentityStatus;
+  duplicateCount: number;
+  needsFullRefresh: boolean;
+  invalidated: boolean;
+  /** Explicitly never restored from persistence. */
+  actionAuthority: "none";
+}
+
+export interface ListFrontierWindow<T> {
+  items: readonly T[];
+  /** The next scroll/probe cursor supplied by the page or collector. */
+  nextProbe?: number;
+  /** Only "proven" can make a frontier complete. Omitted means unknown. */
+  exhaustion?: FrontierExhaustion;
+  identityStatus?: FrontierIdentityStatus;
+}
+
+export interface ListFrontierUpdate<T> {
+  frontier: ListFrontier<T>;
+  addedItems: T[];
+  duplicateCount: number;
+}
+
+export interface RestoreListFrontierOptions {
+  regionIdentity: string;
+  context: ListFrontierContext;
+}
+
+function frontierContextMatches(a: ListFrontierContext, b: ListFrontierContext): boolean {
+  return (
+    a.documentIdentity === b.documentIdentity &&
+    a.origin === b.origin &&
+    a.sessionId === b.sessionId &&
+    a.ownerIdentity === b.ownerIdentity
+  );
+}
+
+/** Create an empty, resumable frontier for one semantic list region. */
+export function createListFrontier<T>(
+  regionIdentity: string,
+  context: ListFrontierContext,
+): ListFrontier<T> {
+  return {
+    version: 1,
+    regionIdentity,
+    context: { ...context },
+    items: [],
+    fingerprints: [],
+    nextProbe: 0,
+    segments: 0,
+    exhaustion: "unknown",
+    completeness: "unknown",
+    identityStatus: "stable",
+    duplicateCount: 0,
+    needsFullRefresh: false,
+    invalidated: false,
+    actionAuthority: "none",
+  };
+}
+
+/**
+ * Merge one viewport window into a frontier.  Unknown exhaustion is the safe
+ * default: a viewport disappearing, repeating, or recycling is not an end
+ * sentinel. Unstable/ambiguous identity forces an explicit full refresh.
+ */
+export function recordListFrontierWindow<T>(
+  frontier: ListFrontier<T>,
+  window: ListFrontierWindow<T>,
+  fingerprint: (item: T) => string,
+): ListFrontierUpdate<T> {
+  if (frontier.invalidated) return { frontier, addedItems: [], duplicateCount: 0 };
+
+  const seen = new Set(frontier.fingerprints);
+  const addedItems: T[] = [];
+  let duplicateCount = 0;
+  let identityStatus = window.identityStatus ?? frontier.identityStatus;
+  for (const item of window.items) {
+    const key = fingerprint(item);
+    if (!key || key.startsWith("unstable-")) {
+      identityStatus = "ambiguous";
+      continue;
+    }
+    if (seen.has(key)) {
+      duplicateCount++;
+      continue;
+    }
+    seen.add(key);
+    addedItems.push(item);
+    frontier.items.push(item);
+    frontier.fingerprints.push(key);
+  }
+
+  const needsFullRefresh =
+    frontier.needsFullRefresh ||
+    identityStatus !== "stable" ||
+    window.identityStatus === "inconsistent";
+  const exhaustion = window.exhaustion === "proven" && !needsFullRefresh ? "proven" : "unknown";
+  const complete = exhaustion === "proven" && identityStatus === "stable";
+  frontier.nextProbe = window.nextProbe ?? frontier.nextProbe + 1;
+  frontier.segments++;
+  frontier.duplicateCount += duplicateCount;
+  frontier.identityStatus = identityStatus;
+  frontier.needsFullRefresh = needsFullRefresh;
+  frontier.exhaustion = exhaustion;
+  frontier.completeness = complete ? "complete" : addedItems.length ? "partial" : "unknown";
+  return { frontier, addedItems, duplicateCount };
+}
+
+/** Invalidate persisted discovery when its live ownership/document changed. */
+export function invalidateListFrontier<T>(frontier: ListFrontier<T>): ListFrontier<T> {
+  return {
+    ...frontier,
+    items: [],
+    fingerprints: [],
+    exhaustion: "unknown",
+    completeness: "unknown",
+    nextProbe: 0,
+    invalidated: true,
+    needsFullRefresh: true,
+    actionAuthority: "none",
+  };
+}
+
+/** Serialize only discovery state; action authority is deliberately absent. */
+export function serializeListFrontier<T>(frontier: ListFrontier<T>): string {
+  return JSON.stringify({ ...frontier, actionAuthority: "none" });
+}
+
+/** Restore only when the current region and document ownership still match. */
+export function restoreListFrontier<T>(
+  serialized: string,
+  expected: RestoreListFrontierOptions,
+): ListFrontier<T> {
+  try {
+    const parsed = JSON.parse(serialized) as ListFrontier<T>;
+    if (
+      parsed.version !== 1 ||
+      parsed.regionIdentity !== expected.regionIdentity ||
+      !frontierContextMatches(parsed.context, expected.context)
+    ) {
+      return invalidateListFrontier(
+        createListFrontier<T>(expected.regionIdentity, expected.context),
+      );
+    }
+    return {
+      ...parsed,
+      context: { ...expected.context },
+      actionAuthority: "none",
+      invalidated: Boolean(parsed.invalidated),
+    };
+  } catch {
+    return invalidateListFrontier(createListFrontier<T>(expected.regionIdentity, expected.context));
+  }
+}
+
 const LIST_ROLES = new Set(["list", "listbox", "grid", "tree", "table"]);
 const ITEM_ROLES = new Set(["listitem", "option", "row", "treeitem"]);
 const STABLE_ATTRIBUTES = [
