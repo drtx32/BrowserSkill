@@ -7,15 +7,17 @@ pub mod method;
 pub mod system;
 pub mod tools;
 pub mod wiki;
+pub mod wiki_retrieval;
 
 pub use cancel::{CancelParams, CancelResult};
 pub use error::{DecodeError, ErrorCode, RpcError};
 pub use frame::{EventFrame, EventKind, Frame, RequestFrame, ResponseBody, ResponseFrame, RpcId};
 pub use method::Method;
 pub use system::{
-    BrowserListParams, BrowserPeerInfo, BrowserStatusEntry, HandshakeCompat, HandshakeParams,
-    HandshakeResult, PingParams, PingResult, SessionStatusEntry, StatusParams, StatusResult,
-    VersionSkewEntry, BrowserLeaseStatus, compare_protocol, evaluate_handshake_compat,
+    BrowserLeaseStatus, BrowserListParams, BrowserPeerInfo, BrowserStatusEntry, HandshakeCompat,
+    HandshakeParams, HandshakeResult, PingParams, PingResult, SessionStatusEntry, StatusParams,
+    StatusResult, VersionSkewEntry, compare_protocol, evaluate_handshake_compat,
 };
 pub use tools::*;
 pub use wiki::*;
+pub use wiki_retrieval::*;
