@@ -12,8 +12,9 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 use anyhow::{Context, Result, bail};
-use bsk_protocol::{Completeness, EventKind, EventSource, PageInstance, SemanticDelta,
-    WikiEvent, WikiScope, WIKI_SCHEMA_VERSION};
+use bsk_protocol::{Completeness, EventSource, PageInstance, SemanticDelta, WikiEvent,
+    WikiScope, WIKI_SCHEMA_VERSION};
+use bsk_protocol::wiki::EventKind as WikiEventKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -71,7 +72,7 @@ impl ShadowWikiStore {
     /// Append one local evidence event and allocate its per-page revision.
     /// Duplicate event IDs are idempotent, while gaps can never be created by
     /// this API because the daemon owns revision allocation.
-    pub fn ingest(&self, page_id: &str, event_id: Option<String>, kind: EventKind, source: EventSource, payload: Value, completeness: Completeness) -> Result<WikiEvent> {
+    pub fn ingest(&self, page_id: &str, event_id: Option<String>, kind: WikiEventKind, source: EventSource, payload: Value, completeness: Completeness) -> Result<WikiEvent> {
         let payload_bytes = serde_json::to_vec(&payload)?.len();
         let mut state = self.state.lock().expect("wiki store mutex poisoned");
         if payload_bytes > MAX_EVENT_PAYLOAD_BYTES {
@@ -120,7 +121,7 @@ impl ShadowWikiStore {
         persisted.page.completeness = Completeness::Stale;
         persisted.page.invalidated_at = at;
         let payload = json!({ "reason": reason });
-        let event = WikiEvent { schema_version: WIKI_SCHEMA_VERSION.into(), event_id: Uuid::new_v4().to_string(), page_instance_id: page_id.into(), revision: persisted.page.revision + 1, kind: EventKind::Error, source: EventSource::Daemon, payload, predecessor_event_id: persisted.events.last().map(|e| e.event_id.clone()), completeness: Completeness::Stale };
+        let event = WikiEvent { schema_version: WIKI_SCHEMA_VERSION.into(), event_id: Uuid::new_v4().to_string(), page_instance_id: page_id.into(), revision: persisted.page.revision + 1, kind: WikiEventKind::Error, source: EventSource::Daemon, payload, predecessor_event_id: persisted.events.last().map(|e| e.event_id.clone()), completeness: Completeness::Stale };
         persisted.page.revision = event.revision;
         persisted.events.push(event);
         drop(persisted);
@@ -179,9 +180,9 @@ mod tests {
         let dir = tempdir().unwrap();
         let store = ShadowWikiStore::new(Some(dir.path().to_path_buf()));
         let page = store.establish_page(scope(), Some("https://example.test/a".into()), None, 1).unwrap();
-        let event = store.ingest(&page.page_instance_id, Some("e1".into()), EventKind::Observation, EventSource::Vom, json!({"ref":"@e1"}), Completeness::Complete).unwrap();
+        let event = store.ingest(&page.page_instance_id, Some("e1".into()), WikiEventKind::Observation, EventSource::Vom, json!({"ref":"@e1"}), Completeness::Complete).unwrap();
         assert_eq!(event.revision, 1);
-        assert_eq!(store.ingest(&page.page_instance_id, Some("e1".into()), EventKind::Error, EventSource::Daemon, json!({}), Completeness::Complete).unwrap().revision, 1);
+        assert_eq!(store.ingest(&page.page_instance_id, Some("e1".into()), WikiEventKind::Error, EventSource::Daemon, json!({}), Completeness::Complete).unwrap().revision, 1);
         let restarted = ShadowWikiStore::new(Some(dir.path().to_path_buf()));
         assert_eq!(restarted.page(&page.page_instance_id).unwrap().revision, 1);
     }
@@ -190,7 +191,7 @@ mod tests {
     fn oversized_payload_is_rejected_without_revision() {
         let store = ShadowWikiStore::new(None);
         let page = store.establish_page(scope(), None, None, 0).unwrap();
-        assert!(store.ingest(&page.page_instance_id, None, EventKind::Observation, EventSource::Dom, Value::String("x".repeat(MAX_EVENT_PAYLOAD_BYTES)), Completeness::Complete).is_err());
+        assert!(store.ingest(&page.page_instance_id, None, WikiEventKind::Observation, EventSource::Dom, Value::String("x".repeat(MAX_EVENT_PAYLOAD_BYTES)), Completeness::Complete).is_err());
         assert_eq!(store.page(&page.page_instance_id).unwrap().revision, 0);
     }
 }
