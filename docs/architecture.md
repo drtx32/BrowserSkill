@@ -3,6 +3,10 @@
 Developer-oriented overview of how the CLI, daemon, and extension fit together.
 Consolidates design §2, §3, §5, and §6.
 
+The Stage 4 semantic perception and Browser Wiki proposal is documented in
+[stage-4-semantic-browser-wiki.md](stage-4-semantic-browser-wiki.md). It is a
+review-first, additive design and does not change the baseline contracts below.
+
 ## System diagram
 
 The diagram shows the default local setup. In [remote mode](remote-extension-connection.md),
