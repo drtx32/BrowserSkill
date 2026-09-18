@@ -189,10 +189,16 @@ availability does not require permission for every action or grant extra authori
 `request-help` requires daemon protocol 1.3; update CLI, daemon and extension for
 full settings support. A feature's version error does not disable other operations.
 
-Remote content reads/actions require task-created or borrowed tabs. Page-opened
-popups gain no control automatically; an unowned tab inside the Agent Window
-needs the user to move it to a user window before borrowing. Remote upload/download
-are unsupported; screenshots work.
+Remote content reads/actions require task-created, explicitly borrowed, or
+high-confidence adopted tabs. A popup/new tab may be adopted automatically into
+the same session only when it has concrete opener, action, and session lineage
+from the currently controlled tab and the current agent action. URL or title
+similarity alone is never sufficient. Genuine user-existing tabs/windows,
+unrelated or unknown-provenance popups, cross-session tabs, and ambiguous
+lineage remain unowned and require the existing explicit borrow flow and its
+confirmation. Preserve all user-authority boundaries: CAPTCHA, OTP, consent,
+payment, and other human-help steps still require the normal help/confirmation
+path. Remote upload/download are unsupported; screenshots work.
 
 ## Human steps and recovery
 
