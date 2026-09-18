@@ -1,0 +1,28 @@
+{
+  "schema_version": "1.0",
+  "evidence_revision": 42,
+  "fixtures": [
+    {"sample_id": "static-page-01", "kind": "static", "evidence_revision": 42},
+    {"sample_id": "dynamic-mutation-01", "kind": "dynamic", "evidence_revision": 41},
+    {"sample_id": "dialog-modal-01", "kind": "dialog", "evidence_revision": 42},
+    {"sample_id": "popup-opener-01", "kind": "popup", "evidence_revision": 40},
+    {"sample_id": "navigation-boundary-01", "kind": "navigation", "evidence_revision": 39},
+    {"sample_id": "virtualized-list-01", "kind": "virtualized", "evidence_revision": 42}
+  ],
+  "eligibility": {
+    "region_ids": ["region-static", "region-dialog", "region-list"],
+    "claim_ids": ["claim-current", "claim-stale", "claim-retired"],
+    "relation_types": ["contains", "controls", "opens"],
+    "delta_ids": ["delta-complete", "delta-refresh"],
+    "frontier_ids": ["frontier-list"]
+  },
+  "expected": {
+    "semantic_orphan_rate": {"numerator": 0, "denominator": 3},
+    "relation_link_coverage": {"numerator": 2, "denominator": 3},
+    "stale_claim_rate": {"numerator": 1, "denominator": 3},
+    "delta_completeness_rate": {"numerator": 1, "denominator": 2},
+    "full_refresh_rate": {"numerator": 1, "denominator": 2},
+    "virtual_frontier_resumability_rate": {"numerator": 1, "denominator": 1},
+    "virtual_frontier_duplicate_rate": {"numerator": 0, "denominator": 1}
+  }
+}

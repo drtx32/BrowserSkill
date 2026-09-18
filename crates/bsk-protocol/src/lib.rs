@@ -7,6 +7,7 @@ pub mod method;
 pub mod system;
 pub mod tools;
 pub mod wiki;
+pub mod wiki_health;
 pub mod wiki_retrieval;
 
 pub use cancel::{CancelParams, CancelResult};
@@ -20,4 +21,5 @@ pub use system::{
 };
 pub use tools::*;
 pub use wiki::*;
+pub use wiki_health::*;
 pub use wiki_retrieval::*;

@@ -155,4 +155,8 @@ fn main() {
     dump!(SemanticDelta, "wiki_delta");
     dump!(WikiCapabilities, "wiki_capabilities");
     dump!(Invalidation, "wiki_invalidation");
+    dump!(FrozenEligibility, "wiki_health_eligibility");
+    dump!(FrontierSample, "wiki_health_frontier_sample");
+    dump!(HealthMetric, "wiki_health_metric");
+    dump!(WikiHealthReport, "wiki_health_report");
 }
