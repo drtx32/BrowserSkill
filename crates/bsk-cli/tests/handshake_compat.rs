@@ -244,6 +244,7 @@ async fn status_surfaces_version_skew_for_skewed_browser() {
         version_skew: true,
         last_seen: Mutex::new(std::time::Instant::now()),
         heartbeat_seen: std::sync::atomic::AtomicBool::new(false),
+        diagnostics: Mutex::new(None),
     });
     state.browsers.insert(client);
 
