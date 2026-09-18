@@ -1,0 +1,12 @@
+{
+  "schema_version": "1.0",
+  "page_instance_id": "page-1",
+  "from_revision": 12,
+  "to_revision": 13,
+  "added": [],
+  "changed": [],
+  "removed": [],
+  "dirty_regions": ["region-list"],
+  "completeness": "full_refresh_required",
+  "fallback_reason": "mutation_queue_overflow"
+}

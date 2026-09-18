@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "claim_id": "claim-1",
+  "subject_id": "region-list",
+  "predicate": "list_is_exhausted",
+  "value": false,
+  "trust": "agent_inference",
+  "status": "uncertain",
+  "evidence_event_ids": ["event-12"],
+  "evidence_revision": 12,
+  "last_verified_revision": null,
+  "confidence": 0.5,
+  "provenance": {
+    "kind": "annotated",
+    "author": "agent",
+    "evidence_event_ids": ["event-12"]
+  },
+  "valid_from_revision": 12,
+  "valid_until_revision": null
+}

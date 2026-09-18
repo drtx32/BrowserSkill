@@ -6,6 +6,7 @@ pub mod frame;
 pub mod method;
 pub mod system;
 pub mod tools;
+pub mod wiki;
 
 pub use cancel::{CancelParams, CancelResult};
 pub use error::{DecodeError, ErrorCode, RpcError};
@@ -17,3 +18,4 @@ pub use system::{
     VersionSkewEntry, BrowserLeaseStatus, compare_protocol, evaluate_handshake_compat,
 };
 pub use tools::*;
+pub use wiki::*;

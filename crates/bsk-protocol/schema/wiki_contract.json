@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://browserskill.dev/schema/wiki-contract-1.0.json",
+  "title": "Browser Wiki ABI 1.0",
+  "description": "Canonical Stage 4 records. A WikiRef always reuses the existing session-scoped interaction ref.",
+  "definitions": {
+    "scope": {
+      "type": "object",
+      "required": ["browser_id", "session_id", "tab_id", "document_id", "origin"],
+      "additionalProperties": false,
+      "properties": {
+        "browser_id": {"type": "string", "minLength": 1},
+        "session_id": {"type": "string", "minLength": 1},
+        "tab_id": {"type": "integer"},
+        "document_id": {"type": "string", "minLength": 1},
+        "origin": {"type": "string", "minLength": 1}
+      }
+    },
+    "completeness": {"type": "string", "enum": ["complete", "partial", "stale", "unknown", "overflow", "ambiguous", "full_refresh_required"]},
+    "status": {"type": "string", "enum": ["active", "removed", "current", "stale", "superseded", "uncertain", "invalidated"]},
+    "trust": {"type": "string", "enum": ["ground_truth", "derived", "agent_inference"]},
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "author", "evidence_event_ids"],
+      "properties": {
+        "kind": {"type": "string", "enum": ["observed", "reconciled", "annotated"]},
+        "author": {"type": "string"},
+        "evidence_event_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+      }
+    },
+    "page_instance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "page_instance_id", "scope", "navigation_epoch", "revision", "completeness", "active", "invalidated_at"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "page_instance_id": {"type": "string"},
+        "scope": {"$ref": "#/definitions/scope"}, "url": {"type": ["string", "null"]},
+        "title": {"type": ["string", "null"]}, "navigation_epoch": {"type": "integer", "minimum": 0},
+        "revision": {"type": "integer", "minimum": 0}, "completeness": {"$ref": "#/definitions/completeness"},
+        "active": {"type": "boolean"}, "invalidated_at": {"type": ["string", "null"]}
+      }
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "claim_id", "subject_id", "predicate", "value", "trust", "status", "evidence_event_ids", "evidence_revision", "last_verified_revision", "confidence", "provenance", "valid_from_revision", "valid_until_revision"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "claim_id": {"type": "string"}, "subject_id": {"type": "string"}, "predicate": {"type": "string"}, "value": {},
+        "trust": {"$ref": "#/definitions/trust"}, "status": {"$ref": "#/definitions/status"},
+        "evidence_event_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1}, "evidence_revision": {"type": "integer", "minimum": 0},
+        "last_verified_revision": {"type": ["integer", "null"], "minimum": 0}, "confidence": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+        "provenance": {"$ref": "#/definitions/provenance"}, "valid_from_revision": {"type": "integer", "minimum": 0}, "valid_until_revision": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "delta": {
+      "type": "object", "additionalProperties": false,
+      "required": ["schema_version", "page_instance_id", "from_revision", "to_revision", "added", "changed", "removed", "dirty_regions", "completeness", "fallback_reason"],
+      "properties": {
+        "schema_version": {"const": "1.0"}, "page_instance_id": {"type": "string"}, "from_revision": {"type": "integer", "minimum": 0}, "to_revision": {"type": "integer", "minimum": 0},
+        "added": {"type": "array", "items": {}}, "changed": {"type": "array", "items": {"type": "object", "required": ["before", "after", "evidence"], "properties": {"before": {}, "after": {}, "evidence": {"type": "array", "items": {"type": "string"}}}}},
+        "removed": {"type": "array", "items": {"type": "string"}}, "dirty_regions": {"type": "array", "items": {"type": "string"}}, "completeness": {"$ref": "#/definitions/completeness"}, "fallback_reason": {"type": ["string", "null"]}
+      }
+    }
+  }
+}

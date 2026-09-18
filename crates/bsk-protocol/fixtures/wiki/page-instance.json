@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "page_instance_id": "page-1",
+  "scope": {
+    "browser_id": "browser-1",
+    "session_id": "session-1",
+    "tab_id": 7,
+    "document_id": "document-1",
+    "origin": "https://example.test"
+  },
+  "url": "https://example.test/inbox",
+  "title": "Inbox",
+  "navigation_epoch": 3,
+  "revision": 12,
+  "completeness": "complete",
+  "active": true,
+  "invalidated_at": null
+}

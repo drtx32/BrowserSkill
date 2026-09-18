@@ -9,6 +9,7 @@ use bsk_protocol::system::{
 };
 use bsk_protocol::tools::*;
 use bsk_protocol::{CancelParams, CancelResult};
+use bsk_protocol::wiki::*;
 use schemars::schema_for;
 
 fn write_schema(name: &str, schema: impl serde::Serialize) {
@@ -143,4 +144,15 @@ fn main() {
     dump!(RecordStopResult, "tool_record_stop_result");
     dump!(RecordAwaitParams, "tool_record_await_params");
     dump!(RecordAwaitResult, "tool_record_await_result");
+
+    dump!(WikiScope, "wiki_scope");
+    dump!(PageInstance, "wiki_page_instance");
+    dump!(Region, "wiki_region");
+    dump!(WikiRef, "wiki_ref");
+    dump!(WikiEvent, "wiki_event");
+    dump!(Claim, "wiki_claim");
+    dump!(Relation, "wiki_relation");
+    dump!(SemanticDelta, "wiki_delta");
+    dump!(WikiCapabilities, "wiki_capabilities");
+    dump!(Invalidation, "wiki_invalidation");
 }
