@@ -20,6 +20,7 @@ pub mod sessions;
 pub mod start;
 pub mod state;
 pub mod ws;
+pub mod wiki;
 
 #[cfg(test)]
 mod test_support;

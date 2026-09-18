@@ -58,6 +58,8 @@ pub struct DaemonState {
     pub transfers: Arc<TransferRegistry>,
     pub logical_sessions: Arc<super::logical_session::LogicalSessionStore>,
     pub leases: Arc<super::lease::LeaseRegistry>,
+    /// Read-only, local Browser Wiki shadow state. It never authorizes tools.
+    pub wiki: Arc<super::wiki::ShadowWikiStore>,
 }
 
 impl DaemonState {
@@ -80,6 +82,9 @@ impl DaemonState {
         let transfers = Arc::new(TransferRegistry::new().expect("initialise transfer staging"));
         let logical_sessions = Arc::new(super::logical_session::LogicalSessionStore::load());
         let leases = Arc::new(super::lease::LeaseRegistry::new());
+        let wiki = Arc::new(super::wiki::ShadowWikiStore::new(
+            super::paths::bsk_home().ok().map(|path| path.join("wiki")),
+        ));
         Self {
             audit,
             config,
@@ -92,6 +97,7 @@ impl DaemonState {
             transfers,
             logical_sessions,
             leases,
+            wiki,
         }
     }
 }
