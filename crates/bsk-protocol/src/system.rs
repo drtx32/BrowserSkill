@@ -483,6 +483,18 @@ mod handshake_payload_tests {
         assert_eq!(result.min_compatible_peer, None);
         assert_eq!(result.min_compatible_protocol.as_deref(), Some("1.0"));
     }
+
+    #[test]
+    fn legacy_handshake_shape_has_no_wiki_capability_field() {
+        let result: HandshakeResult = serde_json::from_value(serde_json::json!({
+            "server": "browser-skill-daemon",
+            "version": "0.1.0",
+            "protocol_version": "1.0"
+        })).unwrap();
+        let encoded = serde_json::to_value(result).unwrap();
+        assert!(encoded.get("wiki").is_none());
+        assert_eq!(encoded["protocol_version"], "1.0");
+    }
 }
 
 /// `system.ping` request payload. Empty (the response carries `pong`).

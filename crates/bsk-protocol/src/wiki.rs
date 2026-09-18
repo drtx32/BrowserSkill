@@ -180,6 +180,21 @@ pub struct WikiCapabilities {
     pub capabilities: Vec<WikiCapability>,
 }
 
+/// A page-specific read request. The complete scope is mandatory so a
+/// historical page cannot be used as an unscoped evidence index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct WikiPageReadParams {
+    pub page_instance_id: String,
+    pub scope: WikiScope,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct WikiDeltaParams {
+    pub page_instance_id: String,
+    pub scope: WikiScope,
+    pub from_revision: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Invalidation {
     pub reason: String,

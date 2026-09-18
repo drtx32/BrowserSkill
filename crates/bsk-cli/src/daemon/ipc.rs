@@ -260,6 +260,9 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
                 },
+                Method::WikiCapabilities | Method::WikiStatus | Method::WikiEvents | Method::WikiDelta => {
+                    handle_wiki_read(method, &state, params)
+                }
                 Method::SessionStart => match handle_session_start(&state, rpc_id, params).await {
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
@@ -343,6 +346,69 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
             body
         })
     })
+}
+
+fn wiki_read_enabled() -> bool {
+    std::env::var("BSK_WIKI_READ").map(|value| matches!(value.as_str(), "1" | "true" | "on")).unwrap_or(false)
+}
+
+fn wiki_capabilities() -> Value {
+    serde_json::json!({
+        "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION,
+        "min_compatible_schema": bsk_protocol::WIKI_SCHEMA_VERSION,
+        "capabilities": [
+            {"name": "wiki.capabilities", "version": "1.0"},
+            {"name": "wiki.status", "version": "1.0"},
+            {"name": "wiki.events", "version": "1.0"},
+            {"name": "wiki.delta", "version": "1.0"}
+        ]
+    })
+}
+
+fn wiki_unsupported() -> ResponseBody {
+    ResponseBody::Err(RpcError {
+        code: ErrorCode::Unsupported,
+        message: "read-only Wiki surfaces are unavailable".into(),
+        data: Some(serde_json::json!({"reason": "feature_disabled_or_peer_unsupported", "fallback": "tool.observe"})),
+    })
+}
+
+fn wiki_scope_denied() -> ResponseBody {
+    ResponseBody::Err(RpcError {
+        code: ErrorCode::PermissionDenied,
+        message: "Wiki scope does not match the stored page instance".into(),
+        data: Some(serde_json::json!({"reason": "scope_mismatch", "fallback": "tool.observe"})),
+    })
+}
+
+/// Independent, read-only Wiki negotiation and scoped historical reads.
+/// This surface is deliberately not part of `system.handshake`; legacy peers
+/// therefore keep their exact handshake shape and continue using observe/tool.
+fn handle_wiki_read(method: Method, state: &Arc<DaemonState>, params: Value) -> ResponseBody {
+    if !wiki_read_enabled() { return wiki_unsupported(); }
+    if method == Method::WikiCapabilities { return ResponseBody::Ok(wiki_capabilities()); }
+    if method == Method::WikiStatus && params.as_object().map(|object| object.is_empty()).unwrap_or(true) {
+        // Metadata only: never enumerate persisted pages.
+        return ResponseBody::Ok(serde_json::json!({"enabled": true, "capabilities": wiki_capabilities()}));
+    }
+    let page_id = params.get("page_instance_id").and_then(Value::as_str);
+    let scope = params.get("scope").cloned().and_then(|value| serde_json::from_value::<bsk_protocol::WikiScope>(value).ok());
+    let (Some(page_id), Some(scope)) = (page_id, scope) else {
+        return ResponseBody::Err(invalid_params("page_instance_id and exact five-field scope are required"));
+    };
+    if state.wiki.scoped_page(page_id, &scope).is_none() { return wiki_scope_denied(); }
+    match method {
+        Method::WikiStatus => ResponseBody::Ok(serde_json::json!({"enabled": true, "page": state.wiki.scoped_page(page_id, &scope)})),
+        Method::WikiEvents => ResponseBody::Ok(serde_json::json!({"page_instance_id": page_id, "events": state.wiki.scoped_events(page_id, &scope).unwrap_or_default()})),
+        Method::WikiDelta => {
+            let Some(from_revision) = params.get("from_revision").and_then(Value::as_u64) else { return ResponseBody::Err(invalid_params("from_revision is required")); };
+            match state.wiki.scoped_delta(page_id, &scope, from_revision) {
+                Ok(delta) => ResponseBody::Ok(serde_json::to_value(delta).unwrap_or(Value::Null)),
+                Err(error) => ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: error.to_string(), data: Some(serde_json::json!({"fallback": "tool.observe"})) }),
+            }
+        }
+        _ => ResponseBody::Err(RpcError { code: ErrorCode::UnknownMethod, message: "not a Wiki read method".into(), data: None }),
+    }
 }
 
 fn is_tool_method(method: &Method) -> bool {
@@ -2253,5 +2319,26 @@ mod tests {
         drop(reader);
         let _ = tx.send(());
         let _ = server.await;
+    }
+
+    #[test]
+    fn wiki_disabled_is_explicit_and_falls_back_to_observe() {
+        match wiki_unsupported() {
+            ResponseBody::Err(error) => {
+                assert_eq!(error.code, ErrorCode::Unsupported);
+                assert_eq!(error.data.unwrap()["fallback"], "tool.observe");
+            }
+            other => panic!("expected unsupported response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wiki_capabilities_are_independent_metadata_only() {
+        let value = wiki_capabilities();
+        assert_eq!(value["schema_version"], bsk_protocol::WIKI_SCHEMA_VERSION);
+        assert_eq!(value["min_compatible_schema"], bsk_protocol::WIKI_SCHEMA_VERSION);
+        assert!(value["capabilities"].is_array());
+        assert!(value.get("pages").is_none());
+        assert!(value.get("events").is_none());
     }
 }

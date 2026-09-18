@@ -51,6 +51,19 @@ impl ShadowWikiStore {
         self.state.lock().ok()?.pages.get(page_id).map(|p| p.page.clone())
     }
 
+    /// Return one page only after the caller has supplied its exact scope.
+    pub fn scoped_page(&self, page_id: &str, scope: &WikiScope) -> Option<PageInstance> {
+        self.state.lock().ok()?.pages.get(page_id)
+            .filter(|page| &page.page.scope == scope)
+            .map(|page| page.page.clone())
+    }
+
+    pub fn scoped_events(&self, page_id: &str, scope: &WikiScope) -> Option<Vec<WikiEvent>> {
+        self.state.lock().ok()?.pages.get(page_id)
+            .filter(|page| &page.page.scope == scope)
+            .map(|page| page.events.clone())
+    }
+
     pub fn events(&self, page_id: &str) -> Vec<WikiEvent> {
         self.state.lock().map(|s| s.pages.get(page_id).map(|p| p.events.clone()).unwrap_or_default()).unwrap_or_default()
     }
@@ -129,9 +142,10 @@ impl ShadowWikiStore {
         self.persist_or_degrade(&mut state)
     }
 
-    pub fn delta(&self, page_id: &str, from_revision: u64) -> Result<SemanticDelta> {
+    pub fn scoped_delta(&self, page_id: &str, scope: &WikiScope, from_revision: u64) -> Result<SemanticDelta> {
         let state = self.state.lock().expect("wiki store mutex poisoned");
         let persisted = state.pages.get(page_id).context("unknown wiki page instance")?;
+        if &persisted.page.scope != scope { bail!("Wiki scope mismatch"); }
         if from_revision > persisted.page.revision { bail!("revision is ahead of page instance"); }
         let mut added = Vec::new();
         let mut changed = Vec::new();
@@ -175,6 +189,13 @@ impl ShadowWikiStore {
             fallback_reason = Some(if self.load_failed { "persistence_load_failed" } else { "persistence_or_capture_incomplete" }.into());
         }
         Ok(SemanticDelta { schema_version: WIKI_SCHEMA_VERSION.into(), page_instance_id: page_id.into(), from_revision, to_revision: persisted.page.revision, added, changed, removed, dirty_regions, completeness, fallback_reason })
+    }
+
+    pub fn delta(&self, page_id: &str, from_revision: u64) -> Result<SemanticDelta> {
+        let state = self.state.lock().expect("wiki store mutex poisoned");
+        let scope = state.pages.get(page_id).context("unknown wiki page instance")?.page.scope.clone();
+        drop(state);
+        self.scoped_delta(page_id, &scope, from_revision)
     }
 
     fn load(&self) -> Result<()> {
@@ -275,5 +296,27 @@ mod tests {
         let delta = store.delta(&page.page_instance_id, 0).unwrap();
         assert_eq!(delta.completeness, Completeness::FullRefreshRequired);
         assert_eq!(delta.fallback_reason.as_deref(), Some("ambiguous_removed_identity"));
+    }
+
+    #[test]
+    fn scoped_reads_require_exact_five_field_identity() {
+        let store = ShadowWikiStore::new(None);
+        let page = store.establish_page(scope(), None, None, 0).unwrap();
+        store.ingest(&page.page_instance_id, Some("e1".into()), WikiEventKind::Observation, EventSource::Vom, json!({"safe": true}), Completeness::Complete).unwrap();
+        assert!(store.scoped_page(&page.page_instance_id, &scope()).is_some());
+        assert_eq!(store.scoped_events(&page.page_instance_id, &scope()).unwrap().len(), 1);
+        assert!(store.scoped_delta(&page.page_instance_id, &scope(), 0).is_ok());
+
+        let mut mismatches = Vec::new();
+        let mut browser = scope(); browser.browser_id = "other-browser".into(); mismatches.push(browser);
+        let mut session = scope(); session.session_id = "other-session".into(); mismatches.push(session);
+        let mut tab = scope(); tab.tab_id = 2; mismatches.push(tab);
+        let mut document = scope(); document.document_id = "other-document".into(); mismatches.push(document);
+        let mut origin = scope(); origin.origin = "https://other.example".into(); mismatches.push(origin);
+        for mismatch in mismatches {
+            assert!(store.scoped_page(&page.page_instance_id, &mismatch).is_none());
+            assert!(store.scoped_events(&page.page_instance_id, &mismatch).is_none());
+            assert!(store.scoped_delta(&page.page_instance_id, &mismatch, 0).is_err());
+        }
     }
 }

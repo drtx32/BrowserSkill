@@ -31,6 +31,15 @@ pub enum Method {
     #[serde(rename = "system.status")]
     SystemStatus,
 
+    #[serde(rename = "wiki.capabilities")]
+    WikiCapabilities,
+    #[serde(rename = "wiki.status")]
+    WikiStatus,
+    #[serde(rename = "wiki.events")]
+    WikiEvents,
+    #[serde(rename = "wiki.delta")]
+    WikiDelta,
+
     #[serde(rename = "session.start")]
     SessionStart,
     #[serde(rename = "session.stop")]
@@ -228,7 +237,11 @@ impl Method {
             | Method::ToolWaitMs
             | Method::ToolRequestHelp
             | Method::ToolRecordStop
-            | Method::ToolRecordAwait => MethodEffect::PassiveRead,
+            | Method::ToolRecordAwait
+            | Method::WikiCapabilities
+            | Method::WikiStatus
+            | Method::WikiEvents
+            | Method::WikiDelta => MethodEffect::PassiveRead,
 
             // Session lifecycle — not gated.
             Method::SessionStart
@@ -411,6 +424,16 @@ mod tests {
         assert!(!Method::SystemStatus.is_mutating());
         assert!(!Method::BrowserList.is_mutating());
         assert!(!Method::Cancel.is_mutating());
+    }
+
+    #[test]
+    fn wiki_reads_are_passive_and_do_not_require_a_lease() {
+        for method in [Method::WikiCapabilities, Method::WikiStatus, Method::WikiEvents, Method::WikiDelta] {
+            assert_eq!(method.effect(), MethodEffect::PassiveRead);
+            assert!(!method.is_mutating());
+            assert!(!method.requires_control_lease());
+            assert!(!method.requires_interrupt_gate());
+        }
     }
 
     #[test]

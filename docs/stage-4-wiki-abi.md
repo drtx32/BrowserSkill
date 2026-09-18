@@ -43,7 +43,10 @@ handshake and is optional. A peer advertises `schema_version`,
 An absent capability means `unsupported`; an unknown newer schema is
 `unsupported`, never guessed. Same-major compatible minor versions may be
 read-only negotiated by the daemon, but writes require a capability match.
-Old clients keep the existing observe path. No Wiki method bypasses leases,
+Stage 4.9 exposes this through the additive `wiki.capabilities` surface, not
+through `system.handshake`; page reads require the exact five-field scope and
+remain historical/read-only without live ownership authorization. Old clients
+keep the existing observe path. No Wiki method bypasses leases,
 session ownership, popup lineage, sandbox policy, or the interaction resolver.
 
 ## Retention and redaction defaults
