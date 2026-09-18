@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FrozenEligibility",
+  "type": "object",
+  "required": [
+    "claim_ids",
+    "delta_ids",
+    "frontier_ids",
+    "region_ids",
+    "relation_types"
+  ],
+  "properties": {
+    "claim_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "delta_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "frontier_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "region_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "relation_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/RelationType"
+      }
+    }
+  },
+  "definitions": {
+    "RelationType": {
+      "type": "string",
+      "enum": [
+        "contains",
+        "labels",
+        "controls",
+        "opens",
+        "caused",
+        "references",
+        "item_of",
+        "owned_by",
+        "blocks",
+        "linked_to"
+      ]
+    }
+  }
+}

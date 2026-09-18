@@ -10,6 +10,7 @@ use bsk_protocol::system::{
 use bsk_protocol::tools::*;
 use bsk_protocol::{CancelParams, CancelResult};
 use bsk_protocol::wiki::*;
+use bsk_protocol::wiki_health::*;
 use schemars::schema_for;
 
 fn write_schema(name: &str, schema: impl serde::Serialize) {

@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "WikiHealthReport",
+  "type": "object",
+  "required": [
+    "delta_completeness_rate",
+    "eligibility",
+    "full_refresh_rate",
+    "relation_link_coverage",
+    "schema_version",
+    "semantic_orphan_rate",
+    "stale_claim_rate",
+    "virtual_frontier_duplicate_rate",
+    "virtual_frontier_resumability_rate"
+  ],
+  "properties": {
+    "delta_completeness_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "eligibility": {
+      "$ref": "#/definitions/FrozenEligibility"
+    },
+    "full_refresh_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "relation_link_coverage": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "schema_version": {
+      "type": "string"
+    },
+    "semantic_orphan_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "stale_claim_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "virtual_frontier_duplicate_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    },
+    "virtual_frontier_resumability_rate": {
+      "$ref": "#/definitions/HealthMetric"
+    }
+  },
+  "definitions": {
+    "FrozenEligibility": {
+      "type": "object",
+      "required": [
+        "claim_ids",
+        "delta_ids",
+        "frontier_ids",
+        "region_ids",
+        "relation_types"
+      ],
+      "properties": {
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "delta_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "frontier_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "region_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "relation_types": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/RelationType"
+          }
+        }
+      }
+    },
+    "HealthMetric": {
+      "type": "object",
+      "required": [
+        "denominator",
+        "evidence_revision",
+        "formula",
+        "numerator",
+        "rate",
+        "sample_ids"
+      ],
+      "properties": {
+        "denominator": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "evidence_revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0.0
+        },
+        "formula": {
+          "type": "string"
+        },
+        "numerator": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0.0
+        },
+        "rate": {
+          "type": "number",
+          "format": "double"
+        },
+        "sample_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "RelationType": {
+      "type": "string",
+      "enum": [
+        "contains",
+        "labels",
+        "controls",
+        "opens",
+        "caused",
+        "references",
+        "item_of",
+        "owned_by",
+        "blocks",
+        "linked_to"
+      ]
+    }
+  }
+}

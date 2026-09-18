@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "FrontierSample",
+  "type": "object",
+  "required": [
+    "evidence_revision",
+    "frontier_id",
+    "item_ids"
+  ],
+  "properties": {
+    "evidence_revision": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0.0
+    },
+    "frontier_id": {
+      "type": "string"
+    },
+    "item_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_complete_revision": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "format": "uint64",
+      "minimum": 0.0
+    }
+  }
+}

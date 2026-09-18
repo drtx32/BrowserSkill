@@ -72,6 +72,11 @@ pub fn compute_health(
     let region_ids = ids(&eligibility.region_ids);
     let claim_ids = ids(&eligibility.claim_ids);
     let frontier_ids = ids(&eligibility.frontier_ids);
+    let eligible_region_count = eligibility.region_ids.len();
+    let eligible_claim_count = eligibility.claim_ids.len();
+    let expected_relation_count = eligibility.relation_types.len();
+    let eligible_delta_count = eligibility.delta_ids.len();
+    let eligible_frontier_count = eligibility.frontier_ids.len();
     let eligible_regions: Vec<&Region> = regions.iter().filter(|r| region_ids.contains(r.region_id.as_str())).collect();
     let eligible_claims: Vec<&Claim> = claims.iter().filter(|c| claim_ids.contains(c.claim_id.as_str())).collect();
     let valid_relation = |r: &&Relation| {
@@ -81,7 +86,16 @@ pub fn compute_health(
             && (region_ids.contains(r.from_id.as_str()) || claim_ids.contains(r.from_id.as_str()))
             && (region_ids.contains(r.to_id.as_str()) || claim_ids.contains(r.to_id.as_str()))
     };
-    let relation_types: BTreeSet<&RelationType> = relations.iter().filter(valid_relation).map(|r| &r.relation_type).collect();
+    let relation_types: Vec<RelationType> = relations
+        .iter()
+        .filter(valid_relation)
+        .map(|r| r.relation_type.clone())
+        .fold(Vec::new(), |mut types, relation_type| {
+            if !types.contains(&relation_type) {
+                types.push(relation_type);
+            }
+            types
+        });
     let orphan_ids: Vec<String> = eligible_regions.iter().filter(|r| {
         let evidence = r.revision_last_seen <= evidence_revision;
         let parent = r.parent_region_id.as_ref().map(|p| region_ids.contains(p.as_str())).unwrap_or(false);
@@ -101,13 +115,13 @@ pub fn compute_health(
     WikiHealthReport {
         schema_version: crate::wiki::WIKI_SCHEMA_VERSION.into(),
         eligibility,
-        semantic_orphan_rate: metric(orphan_ids.len(), eligibility.region_ids.len(), orphan_ids, evidence_revision, "orphaned eligible regions / frozen eligible regions"),
-        relation_link_coverage: metric(relation_types.len(), eligibility.relation_types.len(), relation_types.iter().map(|t| format!("relation:{t:?}")).collect(), evidence_revision, "relation types with current endpoints and evidence / frozen expected relation types"),
-        stale_claim_rate: metric(stale_ids.len(), eligibility.claim_ids.len(), stale_ids, evidence_revision, "stale|superseded|uncertain eligible claims / frozen eligible claims"),
-        delta_completeness_rate: metric(complete_ids.len(), eligibility.delta_ids.len(), complete_ids, evidence_revision, "complete eligible deltas / frozen eligible deltas"),
-        full_refresh_rate: metric(refresh_ids.len(), eligibility.delta_ids.len(), refresh_ids, evidence_revision, "full_refresh_required eligible deltas / frozen eligible deltas"),
-        virtual_frontier_resumability_rate: metric(resumable_ids.len(), eligibility.frontier_ids.len(), resumable_ids, evidence_revision, "resumable eligible frontiers / frozen eligible frontiers"),
-        virtual_frontier_duplicate_rate: metric(duplicate_ids.len(), eligibility.frontier_ids.len(), duplicate_ids, evidence_revision, "frontiers containing duplicate item IDs / frozen eligible frontiers"),
+        semantic_orphan_rate: metric(orphan_ids.len(), eligible_region_count, orphan_ids, evidence_revision, "orphaned eligible regions / frozen eligible regions"),
+        relation_link_coverage: metric(relation_types.len(), expected_relation_count, relation_types.iter().map(|t| format!("relation:{t:?}")).collect(), evidence_revision, "relation types with current endpoints and evidence / frozen expected relation types"),
+        stale_claim_rate: metric(stale_ids.len(), eligible_claim_count, stale_ids, evidence_revision, "stale|superseded|uncertain eligible claims / frozen eligible claims"),
+        delta_completeness_rate: metric(complete_ids.len(), eligible_delta_count, complete_ids, evidence_revision, "complete eligible deltas / frozen eligible deltas"),
+        full_refresh_rate: metric(refresh_ids.len(), eligible_delta_count, refresh_ids, evidence_revision, "full_refresh_required eligible deltas / frozen eligible deltas"),
+        virtual_frontier_resumability_rate: metric(resumable_ids.len(), eligible_frontier_count, resumable_ids, evidence_revision, "resumable eligible frontiers / frozen eligible frontiers"),
+        virtual_frontier_duplicate_rate: metric(duplicate_ids.len(), eligible_frontier_count, duplicate_ids, evidence_revision, "frontiers containing duplicate item IDs / frozen eligible frontiers"),
     }
 }
 
