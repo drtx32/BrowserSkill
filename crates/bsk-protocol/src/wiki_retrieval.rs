@@ -56,6 +56,10 @@ pub struct WikiReadState {
     /// Optional, pre-built local chunks. The router never creates or refreshes them.
     #[serde(default)]
     pub semantic_chunks: Vec<SemanticChunk>,
+    /// An explicitly materialized, local-only semantic index. Retrieval never
+    /// constructs or refreshes this value.
+    #[serde(default)]
+    pub semantic_index: Option<LocalSemanticIndex>,
     #[serde(default)]
     pub session: Option<Value>,
     #[serde(default)]
@@ -69,10 +73,39 @@ pub struct SemanticChunk {
     pub chunk_id: String,
     pub text: String,
     pub revision: u64,
+    /// Stable semantic region identity; DOM nodes are intentionally not index
+    /// entries.
+    #[serde(default)]
+    pub region_id: Option<String>,
     #[serde(default)]
     pub evidence_event_ids: Vec<String>,
     #[serde(default)]
     pub score: Option<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalSemanticIndex {
+    pub page_instance_id: String,
+    pub scope: crate::wiki::WikiScope,
+    pub source_revision: u64,
+    #[serde(default)]
+    pub chunks: Vec<SemanticChunk>,
+}
+
+impl LocalSemanticIndex {
+    /// Build an index from stable region/chunk records. This is an explicit
+    /// maintenance operation; the retrieval router never calls it.
+    pub fn build(page: &PageInstance, chunks: impl IntoIterator<Item = SemanticChunk>) -> Self {
+        Self {
+            page_instance_id: page.page_instance_id.clone(),
+            scope: page.scope.clone(),
+            source_revision: page.revision,
+            chunks: chunks
+                .into_iter()
+                .filter(|chunk| chunk.region_id.is_some())
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -93,6 +126,30 @@ pub struct RetrievalReceipt {
     pub result_count: usize,
     pub quality: RetrievalQuality,
     pub fallback: Option<String>,
+    /// Index health is explicit so stale results can never look like a
+    /// healthy empty response.
+    #[serde(default)]
+    pub index_status: Option<String>,
+    #[serde(default)]
+    pub index_source_revision: Option<u64>,
+    #[serde(default)]
+    pub current_revision: u64,
+    #[serde(default)]
+    pub last_safe_revision: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct IndexReceipt {
+    status: Option<String>,
+    source_revision: Option<u64>,
+    last_safe_revision: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct EnvelopeOptions {
+    fallback: Option<String>,
+    next: Option<String>,
+    index: IndexReceipt,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -245,8 +302,14 @@ impl RetrievalRouter {
                 );
             }
             if query.semantic {
-                let results = state
-                    .semantic_chunks
+                let (chunks, index_status, source_revision, last_safe_revision) =
+                    self.semantic_candidates(state);
+                let index = IndexReceipt {
+                    status: index_status,
+                    source_revision,
+                    last_safe_revision,
+                };
+                let results = chunks
                     .iter()
                     .filter(|chunk| contains(&Value::String(chunk.text.clone()), &needle))
                     .take(limit)
@@ -259,20 +322,43 @@ impl RetrievalRouter {
                     })
                     .collect::<Vec<_>>();
                 if !results.is_empty() {
-                    return self.envelope(
+                    return self.envelope_with_options(
                         state,
                         RetrievalSource::Semantic,
                         results,
                         RetrievalQuality::Bounded,
-                        None,
-                        None,
+                        EnvelopeOptions {
+                            index: index.clone(),
+                            ..Default::default()
+                        },
                     );
                 }
-                return self.fallback(
+                if index.status.as_deref() == Some("stale_index") {
+                    return self.fallback_with_index(
+                        state,
+                        "stale_index",
+                        "local semantic index revision/scope does not match canonical state; no backfill was started",
+                        index,
+                    );
+                }
+                if index.status.as_deref() == Some("index_not_built") {
+                    return self.fallback_with_index(
+                        state,
+                        "index_not_built",
+                        "wiki.read.semantic requires an existing local index; no backfill was started",
+                        index,
+                    );
+                }
+                return self.envelope_with_options(
                     state,
-                    RetrievalSource::Semantic,
-                    "semantic_index_unavailable",
-                    "wiki.read.semantic requires an existing local index; no backfill was started",
+                    RetrievalSource::FullObserve,
+                    vec![],
+                    RetrievalQuality::Bounded,
+                    EnvelopeOptions {
+                        fallback: Some("healthy_no_match".into()),
+                        index,
+                        ..Default::default()
+                    },
                 );
             }
         }
@@ -296,7 +382,6 @@ impl RetrievalRouter {
         }
         self.fallback(
             state,
-            RetrievalSource::FullObserve,
             "insufficient_current_state",
             "fresh observe is required; retrieval never invokes observe synchronously",
         )
@@ -386,6 +471,27 @@ impl RetrievalRouter {
         fallback: Option<String>,
         next: Option<String>,
     ) -> RetrievalEnvelope {
+        self.envelope_with_options(
+            state,
+            source,
+            results,
+            quality,
+            EnvelopeOptions {
+                fallback,
+                next,
+                ..Default::default()
+            },
+        )
+    }
+
+    fn envelope_with_options(
+        &self,
+        state: &WikiReadState,
+        source: RetrievalSource,
+        results: Vec<RetrievalResult>,
+        quality: RetrievalQuality,
+        options: EnvelopeOptions,
+    ) -> RetrievalEnvelope {
         let result_count = results.len();
         let estimated_tokens = results
             .iter()
@@ -415,36 +521,106 @@ impl RetrievalRouter {
             results,
             evidence,
             blockers,
-            next_safe_query: next,
+            next_safe_query: options.next,
             receipt: RetrievalReceipt {
                 estimated_tokens,
                 latency_budget_ms: 25,
                 result_count,
                 quality,
-                fallback,
+                fallback: options.fallback,
+                index_status: options.index.status,
+                index_source_revision: options.index.source_revision,
+                current_revision: state.page_instance.revision,
+                last_safe_revision: options.index.last_safe_revision,
             },
         }
     }
 
-    fn fallback(
+    fn fallback(&self, state: &WikiReadState, reason: &str, message: &str) -> RetrievalEnvelope {
+        self.fallback_with_index(state, reason, message, IndexReceipt::default())
+    }
+
+    fn fallback_with_index(
         &self,
         state: &WikiReadState,
-        attempted: RetrievalSource,
         reason: &str,
         message: &str,
+        index: IndexReceipt,
     ) -> RetrievalEnvelope {
-        let mut envelope = self.envelope(
+        let mut envelope = self.envelope_with_options(
             state,
             RetrievalSource::FullObserve,
             vec![],
             RetrievalQuality::Unavailable,
-            Some(format!("{}:{:?}", reason, attempted)),
-            Some("observe current page, then retry the same bounded query".into()),
+            EnvelopeOptions {
+                fallback: Some(reason.into()),
+                next: Some("observe current page, then retry the same bounded query".into()),
+                index,
+            },
         );
         let mut blockers = envelope.blockers;
         blockers.push(message.into());
         envelope.blockers = blockers;
         envelope
+    }
+
+    fn semantic_candidates(
+        &self,
+        state: &WikiReadState,
+    ) -> (Vec<SemanticChunk>, Option<String>, Option<u64>, Option<u64>) {
+        let Some(index) = state.semantic_index.as_ref() else {
+            // Keep the pre-index field as a compatibility envelope for older
+            // callers, but still classify it rather than treating it as an
+            // implicit rebuild request.
+            if state.semantic_chunks.is_empty() {
+                return (vec![], Some("index_not_built".into()), None, None);
+            }
+            let current = state.page_instance.revision;
+            let stale = state
+                .semantic_chunks
+                .iter()
+                .any(|chunk| chunk.revision != current);
+            let source_revision = state
+                .semantic_chunks
+                .iter()
+                .map(|chunk| chunk.revision)
+                .min()
+                .unwrap_or(current);
+            return (
+                if stale {
+                    vec![]
+                } else {
+                    state.semantic_chunks.clone()
+                },
+                Some(if stale { "stale_index" } else { "ready" }.into()),
+                Some(source_revision),
+                Some(if stale { source_revision } else { current }),
+            );
+        };
+        let current = state.page_instance.revision;
+        let scope_matches = index.page_instance_id == state.page_instance.page_instance_id
+            && index.scope == state.page_instance.scope;
+        let chunks_match = index
+            .chunks
+            .iter()
+            .all(|chunk| chunk.revision == index.source_revision);
+        let chunks = index
+            .chunks
+            .iter()
+            .filter(|chunk| chunk.region_id.is_some())
+            .cloned()
+            .collect();
+        let stale = !scope_matches || index.source_revision != current || !chunks_match;
+        (
+            if stale { vec![] } else { chunks },
+            Some(if stale { "stale_index" } else { "ready" }.into()),
+            Some(index.source_revision),
+            Some(if stale {
+                index.source_revision.min(current)
+            } else {
+                current
+            }),
+        )
     }
 }
 
@@ -531,9 +707,11 @@ mod tests {
                 chunk_id: "chunk-archive".into(),
                 text: "Archive the selected inbox message".into(),
                 revision: 12,
+                region_id: Some("region-list".into()),
                 evidence_event_ids: vec!["event-2".into()],
                 score: Some(0.9),
             }],
+            semantic_index: None,
             session: Some(serde_json::json!({"id": "session-1"})),
             ownership: Some(serde_json::json!({"owned": true})),
             blockers: vec![],
@@ -634,10 +812,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(
-            result.receipt.fallback.as_deref(),
-            Some("semantic_index_unavailable:Semantic")
-        );
+        assert_eq!(result.receipt.fallback.as_deref(), Some("index_not_built"));
         assert!(
             result
                 .blockers
@@ -645,6 +820,101 @@ mod tests {
                 .any(|blocker| blocker.contains("no backfill"))
         );
         assert_eq!(state.semantic_chunks.len(), before);
+    }
+
+    #[test]
+    fn distinguishes_not_built_from_healthy_empty_and_stale_index() {
+        let router = RetrievalRouter::default();
+        let mut state = state();
+        state.semantic_chunks.clear();
+        let not_built = router.route(
+            &state,
+            &RetrievalQuery {
+                text: Some("missing".into()),
+                semantic: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            not_built.receipt.fallback.as_deref(),
+            Some("index_not_built")
+        );
+        assert_eq!(
+            not_built.receipt.index_status.as_deref(),
+            Some("index_not_built")
+        );
+        assert_eq!(not_built.receipt.last_safe_revision, None);
+
+        let page = state.page_instance.clone();
+        state.semantic_index = Some(LocalSemanticIndex::build(
+            &page,
+            [SemanticChunk {
+                chunk_id: "chunk-1".into(),
+                text: "Inbox archive".into(),
+                revision: page.revision,
+                region_id: Some("region-root".into()),
+                evidence_event_ids: vec![],
+                score: None,
+            }],
+        ));
+        let healthy_empty = router.route(
+            &state,
+            &RetrievalQuery {
+                text: Some("not-present".into()),
+                semantic: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(
+            healthy_empty.receipt.fallback.as_deref(),
+            Some("healthy_no_match")
+        );
+        assert_eq!(healthy_empty.receipt.index_status.as_deref(), Some("ready"));
+        assert_eq!(healthy_empty.receipt.quality, RetrievalQuality::Bounded);
+
+        state.page_instance.revision += 1;
+        let stale = router.route(
+            &state,
+            &RetrievalQuery {
+                text: Some("archive".into()),
+                semantic: true,
+                ..Default::default()
+            },
+        );
+        assert_eq!(stale.receipt.fallback.as_deref(), Some("stale_index"));
+        assert_eq!(stale.receipt.index_status.as_deref(), Some("stale_index"));
+        assert_eq!(stale.receipt.index_source_revision, Some(page.revision));
+        assert_eq!(stale.receipt.current_revision, page.revision + 1);
+        assert_eq!(stale.receipt.last_safe_revision, Some(page.revision));
+        assert!(stale.results.is_empty());
+    }
+
+    #[test]
+    fn local_index_only_accepts_region_chunks_and_is_scope_bound() {
+        let state = state();
+        let index = LocalSemanticIndex::build(
+            &state.page_instance,
+            [
+                SemanticChunk {
+                    chunk_id: "region-chunk".into(),
+                    text: "stable region".into(),
+                    revision: state.page_instance.revision,
+                    region_id: Some("region-root".into()),
+                    evidence_event_ids: vec![],
+                    score: None,
+                },
+                SemanticChunk {
+                    chunk_id: "dom-node".into(),
+                    text: "must not be indexed".into(),
+                    revision: state.page_instance.revision,
+                    region_id: None,
+                    evidence_event_ids: vec![],
+                    score: None,
+                },
+            ],
+        );
+        assert_eq!(index.chunks.len(), 1);
+        assert_eq!(index.chunks[0].region_id.as_deref(), Some("region-root"));
     }
 
     #[test]
