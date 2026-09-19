@@ -387,7 +387,16 @@ fn wiki_scope_denied() -> ResponseBody {
 /// This surface is deliberately not part of `system.handshake`; legacy peers
 /// therefore keep their exact handshake shape and continue using observe/tool.
 fn handle_wiki_read(method: Method, state: &Arc<DaemonState>, params: Value) -> ResponseBody {
-    if !wiki_read_enabled() { return wiki_unsupported(); }
+    handle_wiki_read_with_enabled(method, state, params, wiki_read_enabled())
+}
+
+fn handle_wiki_read_with_enabled(
+    method: Method,
+    state: &Arc<DaemonState>,
+    params: Value,
+    enabled: bool,
+) -> ResponseBody {
+    if !enabled { return wiki_unsupported(); }
     if method == Method::WikiCapabilities { return ResponseBody::Ok(wiki_capabilities()); }
     if method == Method::WikiStatus && params.as_object().map(|object| object.is_empty()).unwrap_or(true) {
         // Metadata only: never enumerate persisted pages.
@@ -408,7 +417,7 @@ fn handle_wiki_read(method: Method, state: &Arc<DaemonState>, params: Value) -> 
             return ResponseBody::Err(RpcError { code: ErrorCode::NotFound, message: "no current Wiki page is available for this session".into(), data: Some(serde_json::json!({"reason": "current_page_unavailable", "session_id": session_id, "fallback": "tool.observe"})) });
         }
         if pages.len() > 1 {
-            return ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: "multiple current Wiki pages match this session; provide explicit scope".into(), data: Some(serde_json::json!({"reason": "ambiguous_current_page", "session_id": session_id, "page_instance_ids": pages.iter().map(|page| &page.page_instance_id).collect::<Vec<_>>() })) });
+            return ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: "multiple current Wiki pages match this session; provide explicit scope".into(), data: Some(serde_json::json!({"reason": "ambiguous_current_page", "session_id": session_id, "page_instance_ids": pages.iter().map(|page| &page.page_instance_id).collect::<Vec<_>>(), "fallback": "tool.observe" })) });
         }
         let page = pages.into_iter().next().expect("non-empty pages");
         let resolution = serde_json::json!({"mode": "current", "session_id": session_id});
@@ -2030,6 +2039,8 @@ pub use windows::{bind, serve};
 mod tests {
     use super::*;
     use bsk_protocol::{Frame, Method, RequestFrame};
+    use crate::daemon::start::DaemonConfig;
+    use crate::daemon::wiki::ShadowWikiStore;
     use tempfile::TempDir;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixStream;
@@ -2370,5 +2381,65 @@ mod tests {
         assert!(value["capabilities"].is_array());
         assert!(value.get("pages").is_none());
         assert!(value.get("events").is_none());
+    }
+
+    #[test]
+    fn wiki_current_page_unavailable_has_observe_fallback_envelope() {
+        let mut daemon = DaemonState::new(DaemonConfig::new(0));
+        let temp = TempDir::new().unwrap();
+        daemon.wiki = Arc::new(ShadowWikiStore::new(Some(temp.path().join("wiki"))));
+        let state = Arc::new(daemon);
+
+        let response = handle_wiki_read_with_enabled(
+            Method::WikiRetrieve,
+            &state,
+            serde_json::json!({"session_id": "default", "query": {"text": "invoice"}}),
+            true,
+        );
+        match response {
+            ResponseBody::Err(error) => {
+                assert_eq!(error.code, ErrorCode::NotFound);
+                let data = error.data.expect("structured unavailable data");
+                assert_eq!(data["reason"], "current_page_unavailable");
+                assert_eq!(data["fallback"], "tool.observe");
+            }
+            other => panic!("expected unavailable error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn wiki_ambiguous_current_page_has_ids_and_observe_fallback_envelope() {
+        let mut daemon = DaemonState::new(DaemonConfig::new(0));
+        let temp = TempDir::new().unwrap();
+        daemon.wiki = Arc::new(ShadowWikiStore::new(Some(temp.path().join("wiki"))));
+        let scope = |tab_id| bsk_protocol::WikiScope {
+            browser_id: "browser".into(),
+            session_id: "default".into(),
+            tab_id,
+            document_id: format!("document-{tab_id}"),
+            origin: "https://example.test".into(),
+        };
+        daemon.wiki.establish_page(scope(1), None, None, 1).unwrap();
+        daemon.wiki.establish_page(scope(2), None, None, 2).unwrap();
+        let state = Arc::new(daemon);
+
+        let response = handle_wiki_read_with_enabled(
+            Method::WikiStatus,
+            &state,
+            serde_json::json!({"session_id": "default", "current": true}),
+            true,
+        );
+        match response {
+            ResponseBody::Err(error) => {
+                assert_eq!(error.code, ErrorCode::InvalidParams);
+                let data = error.data.expect("structured ambiguity data");
+                assert_eq!(data["reason"], "ambiguous_current_page");
+                assert_eq!(data["fallback"], "tool.observe");
+                let ids = data["page_instance_ids"].as_array().expect("page id list");
+                assert_eq!(ids.len(), 2);
+                assert!(ids.iter().all(Value::is_string));
+            }
+            other => panic!("expected ambiguity error, got {other:?}"),
+        }
     }
 }

@@ -135,9 +135,11 @@ bsk wiki retrieve --text "invoice" --session default
 ```
 
 Use `bsk wiki current --session default` to inspect the resolved page instance,
-revision, tab/document/origin scope, freshness, completeness, and index-related
-receipt metadata. If multiple active pages match, provide the complete explicit
-scope from that receipt rather than adopting an unknown tab.
+revision, tab/document/origin scope, completeness, and resolution metadata. Use
+that current revision with `bsk wiki delta --from-revision <n>` when you need
+changes since a known point. If multiple active pages match, provide the
+complete explicit scope from the current-page response rather than adopting an
+unknown tab.
 
 Storage/maintenance keeps local evidence and indexes up to date and may lag.
 Retrieval/consumption reads only what is already materialized; an incomplete,
@@ -152,12 +154,11 @@ retrieval/wiki/compiled state first when available; observe is not the default
 substitute for an existing local read projection.
 
 Prefer `observe` for live text, controls and `@eN` refs when that fallback is
-needed. Navigation/page identity
-changes invalidate refs. Same-page rerenders can keep stable logical refs valid,
-and action dispatch performs bounded self-healing for an otherwise stale ref;
-re-observe after an explicit stale/ambiguous result or other invalidating state
-change.
-Use refs for iframe/shadow-root targets; CSS selectors search the main document.
+needed. Navigation/page identity changes invalidate refs. Same-page rerenders
+can keep stable logical refs valid, and action dispatch performs bounded
+self-healing for an otherwise stale ref; re-observe after an explicit
+stale/ambiguous result or other invalidating state change. Use refs for
+iframe/shadow-root targets; CSS selectors search the main document.
 
 Choose the relevant example, using a ref that actually appeared on the page:
 
