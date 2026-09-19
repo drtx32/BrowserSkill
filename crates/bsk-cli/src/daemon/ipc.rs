@@ -393,24 +393,40 @@ fn handle_wiki_read(method: Method, state: &Arc<DaemonState>, params: Value) -> 
         // Metadata only: never enumerate persisted pages.
         return ResponseBody::Ok(serde_json::json!({"enabled": true, "capabilities": wiki_capabilities()}));
     }
-    let page_id = params.get("page_instance_id").and_then(Value::as_str);
-    let scope = params.get("scope").cloned().and_then(|value| serde_json::from_value::<bsk_protocol::WikiScope>(value).ok());
-    let (Some(page_id), Some(scope)) = (page_id, scope) else {
-        return ResponseBody::Err(invalid_params("page_instance_id and exact five-field scope are required"));
+    let has_page = params.get("page_instance_id").is_some() || params.get("scope").is_some();
+    let (page_id, scope, resolution) = if has_page {
+        let page_id = params.get("page_instance_id").and_then(Value::as_str);
+        let scope = params.get("scope").cloned().and_then(|value| serde_json::from_value::<bsk_protocol::WikiScope>(value).ok());
+        let (Some(page_id), Some(scope)) = (page_id, scope) else {
+            return ResponseBody::Err(invalid_params("explicit Wiki reads require page_instance_id and the complete five-field scope"));
+        };
+        (page_id.to_owned(), scope, serde_json::json!({"mode": "explicit"}))
+    } else {
+        let session_id = params.get("session_id").and_then(Value::as_str).unwrap_or("default");
+        let pages = state.wiki.active_pages_for_session(session_id);
+        if pages.is_empty() {
+            return ResponseBody::Err(RpcError { code: ErrorCode::NotFound, message: "no current Wiki page is available for this session".into(), data: Some(serde_json::json!({"reason": "current_page_unavailable", "session_id": session_id, "fallback": "tool.observe"})) });
+        }
+        if pages.len() > 1 {
+            return ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: "multiple current Wiki pages match this session; provide explicit scope".into(), data: Some(serde_json::json!({"reason": "ambiguous_current_page", "session_id": session_id, "page_instance_ids": pages.iter().map(|page| &page.page_instance_id).collect::<Vec<_>>() })) });
+        }
+        let page = pages.into_iter().next().expect("non-empty pages");
+        let resolution = serde_json::json!({"mode": "current", "session_id": session_id});
+        (page.page_instance_id, page.scope, resolution)
     };
-    if state.wiki.scoped_page(page_id, &scope).is_none() { return wiki_scope_denied(); }
+    if state.wiki.scoped_page(&page_id, &scope).is_none() { return wiki_scope_denied(); }
     match method {
-        Method::WikiStatus => ResponseBody::Ok(serde_json::json!({"enabled": true, "page": state.wiki.scoped_page(page_id, &scope)})),
-        Method::WikiEvents => ResponseBody::Ok(serde_json::json!({"page_instance_id": page_id, "events": state.wiki.scoped_events(page_id, &scope).unwrap_or_default()})),
+        Method::WikiStatus => ResponseBody::Ok(serde_json::json!({"enabled": true, "page": state.wiki.scoped_page(&page_id, &scope), "resolution": resolution})),
+        Method::WikiEvents => ResponseBody::Ok(serde_json::json!({"page_instance_id": page_id, "events": state.wiki.scoped_events(&page_id, &scope).unwrap_or_default(), "resolution": resolution})),
         Method::WikiDelta => {
             let Some(from_revision) = params.get("from_revision").and_then(Value::as_u64) else { return ResponseBody::Err(invalid_params("from_revision is required")); };
-            match state.wiki.scoped_delta(page_id, &scope, from_revision) {
+            match state.wiki.scoped_delta(&page_id, &scope, from_revision) {
                 Ok(delta) => ResponseBody::Ok(serde_json::to_value(delta).unwrap_or(Value::Null)),
                 Err(error) => ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: error.to_string(), data: Some(serde_json::json!({"fallback": "tool.observe"})) }),
             }
         }
         Method::WikiView | Method::WikiRetrieve => {
-            let Some(read_state) = state.wiki.read_state(page_id, &scope) else { return wiki_scope_denied(); };
+            let Some(read_state) = state.wiki.read_state(&page_id, &scope) else { return wiki_scope_denied(); };
             let router = bsk_protocol::RetrievalRouter::default();
             let query = params.get("query").cloned()
                 .and_then(|value| serde_json::from_value(value).ok())

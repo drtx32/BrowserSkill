@@ -52,6 +52,14 @@ impl ShadowWikiStore {
         self.state.lock().ok()?.pages.get(page_id).map(|p| p.page.clone())
     }
 
+    /// Return active pages already attached to a logical session. This is a
+    /// discovery read only; it never adopts a user tab or creates a page.
+    pub fn active_pages_for_session(&self, session_id: &str) -> Vec<PageInstance> {
+        self.state.lock().map(|state| state.pages.values()
+            .filter(|persisted| persisted.page.active && persisted.page.scope.session_id == session_id)
+            .map(|persisted| persisted.page.clone()).collect()).unwrap_or_default()
+    }
+
     /// Return one page only after the caller has supplied its exact scope.
     pub fn scoped_page(&self, page_id: &str, scope: &WikiScope) -> Option<PageInstance> {
         self.state.lock().ok()?.pages.get(page_id)
@@ -297,6 +305,27 @@ mod tests {
         assert_eq!(store.ingest(&page.page_instance_id, Some("e1".into()), WikiEventKind::Error, EventSource::Daemon, json!({}), Completeness::Complete).unwrap().revision, 1);
         let restarted = ShadowWikiStore::new(Some(dir.path().to_path_buf()));
         assert_eq!(restarted.page(&page.page_instance_id).unwrap().revision, 1);
+    }
+
+    #[test]
+    fn current_discovery_is_session_scoped_and_rolls_over_on_invalidation() {
+        let store = ShadowWikiStore::new(None);
+        let first = store.establish_page(scope(), None, None, 1).unwrap();
+        assert_eq!(store.active_pages_for_session("s").len(), 1);
+        store.invalidate(&first.page_instance_id, "navigation", None).unwrap();
+        let second = store.establish_page(scope(), None, None, 2).unwrap();
+        let current = store.active_pages_for_session("s");
+        assert_eq!(current.len(), 1);
+        assert_eq!(current[0].page_instance_id, second.page_instance_id);
+        assert!(store.active_pages_for_session("other").is_empty());
+    }
+
+    #[test]
+    fn current_discovery_keeps_multiple_active_pages_explicit() {
+        let store = ShadowWikiStore::new(None);
+        store.establish_page(scope(), None, None, 1).unwrap();
+        store.establish_page(scope(), None, None, 2).unwrap();
+        assert_eq!(store.active_pages_for_session("s").len(), 2);
     }
 
     #[test]

@@ -16,6 +16,8 @@ pub struct WikiCmd { #[command(subcommand)] pub sub: WikiSub }
 pub enum WikiSub {
     /// Negotiate the locally available, read-only Wiki capabilities.
     Capabilities,
+    /// Discover the current active Wiki page for a logical session.
+    Current(WikiSessionArgs),
     /// Return one scoped page's freshness and completeness receipt.
     Status(WikiScopeArgs),
     /// Return the bounded compiled view for one scoped page.
@@ -29,13 +31,16 @@ pub enum WikiSub {
 
 #[derive(Debug, Clone, Args)]
 pub struct WikiScopeArgs {
-    #[arg(long)] pub page_instance_id: String,
-    #[arg(long)] pub browser_id: String,
+    #[arg(long)] pub page_instance_id: Option<String>,
+    #[arg(long)] pub browser_id: Option<String>,
     #[arg(long, default_value = "default")] pub session_id: String,
-    #[arg(long)] pub tab_id: i64,
-    #[arg(long)] pub document_id: String,
-    #[arg(long)] pub origin: String,
+    #[arg(long)] pub tab_id: Option<i64>,
+    #[arg(long)] pub document_id: Option<String>,
+    #[arg(long)] pub origin: Option<String>,
 }
+
+#[derive(Debug, Clone, Args)]
+pub struct WikiSessionArgs { #[arg(long, default_value = "default")] pub session_id: String }
 
 #[derive(Debug, Clone, Args)]
 pub struct WikiQueryArgs {
@@ -55,14 +60,15 @@ pub fn dispatch(cmd: WikiCmd, format: Format) -> Result<(), CliError> {
     let info = ensure_daemon().context("ensure daemon is running")?;
     let (method, params) = match cmd.sub {
         WikiSub::Capabilities => (Method::WikiCapabilities, json!({})),
-        WikiSub::Status(args) => (Method::WikiStatus, scoped(&args)),
-        WikiSub::View(args) => (Method::WikiView, query(&args)),
+        WikiSub::Current(args) => (Method::WikiStatus, json!({"session_id": args.session_id, "current": true})),
+        WikiSub::Status(args) => (Method::WikiStatus, scoped(&args)?),
+        WikiSub::View(args) => (Method::WikiView, query(&args)?),
         WikiSub::Delta(args) => {
-            let mut value = scoped(&args.scope);
+            let mut value = scoped(&args.scope)?;
             value["from_revision"] = json!(args.from_revision);
             (Method::WikiDelta, value)
         }
-        WikiSub::Retrieve(args) => (Method::WikiRetrieve, query(&args)),
+        WikiSub::Retrieve(args) => (Method::WikiRetrieve, query(&args)?),
     };
     let result: Value = crate::cli::business_rpc::call(
         info.sock_path, "wiki", method, Some(params), TOOL_IPC_TIMEOUT,
@@ -73,13 +79,24 @@ pub fn dispatch(cmd: WikiCmd, format: Format) -> Result<(), CliError> {
     Ok(())
 }
 
-fn scoped(args: &WikiScopeArgs) -> Value { json!({"page_instance_id": args.page_instance_id, "scope": scope(args)}) }
-fn query(args: &WikiQueryArgs) -> Value {
-    let mut value = scoped(&args.scope);
-    value["query"] = json!({"ref_id": args.ref_id, "region_id": args.region_id, "since_revision": args.since_revision, "text": args.text, "semantic": args.semantic, "limit": args.limit});
-    value
+fn scoped(args: &WikiScopeArgs) -> Result<Value, CliError> {
+    let mut value = json!({"session_id": args.session_id});
+    let explicit = args.page_instance_id.is_some() || args.browser_id.is_some() || args.tab_id.is_some() || args.document_id.is_some() || args.origin.is_some();
+    if explicit {
+        if args.page_instance_id.is_none() || args.browser_id.is_none() || args.tab_id.is_none() || args.document_id.is_none() || args.origin.is_none() {
+            return Err(CliError::Local(anyhow::anyhow!("explicit Wiki scope requires page_instance_id, browser_id, tab_id, document_id, and origin")));
+        }
+        value["page_instance_id"] = json!(args.page_instance_id);
+        value["scope"] = json!(scope(args));
+    }
+    Ok(value)
 }
-fn scope(args: &WikiScopeArgs) -> WikiScope { WikiScope { browser_id: args.browser_id.clone(), session_id: args.session_id.clone(), tab_id: args.tab_id, document_id: args.document_id.clone(), origin: args.origin.clone() } }
+fn query(args: &WikiQueryArgs) -> Result<Value, CliError> {
+    let mut value = scoped(&args.scope)?;
+    value["query"] = json!({"ref_id": args.ref_id, "region_id": args.region_id, "since_revision": args.since_revision, "text": args.text, "semantic": args.semantic, "limit": args.limit});
+    Ok(value)
+}
+fn scope(args: &WikiScopeArgs) -> WikiScope { WikiScope { browser_id: args.browser_id.clone().unwrap(), session_id: args.session_id.clone(), tab_id: args.tab_id.unwrap(), document_id: args.document_id.clone().unwrap(), origin: args.origin.clone().unwrap() } }
 
 #[cfg(test)]
 mod tests {
@@ -88,7 +105,14 @@ mod tests {
     #[derive(Parser)] struct P { #[command(subcommand)] sub: WikiSub }
     #[test]
     fn retrieval_help_shape_is_parseable() {
-        let parsed = P::try_parse_from(["bsk", "retrieve", "--page-instance-id", "p", "--browser-id", "b", "--tab-id", "1", "--document-id", "d", "--origin", "https://example.test", "--text", "invoice", "--semantic"]).unwrap();
+        let parsed = P::try_parse_from(["bsk", "retrieve", "--text", "invoice", "--semantic"]).unwrap();
         assert!(matches!(parsed.sub, WikiSub::Retrieve(_)));
+    }
+
+    #[test]
+    fn explicit_scope_is_preserved_for_debug_reads() {
+        let parsed = P::try_parse_from(["bsk", "status", "--page-instance-id", "p", "--browser-id", "b", "--tab-id", "1", "--document-id", "d", "--origin", "https://example.test"]).unwrap();
+        let WikiSub::Status(args) = parsed.sub else { panic!("expected status") };
+        assert_eq!(scoped(&args).unwrap()["page_instance_id"], "p");
     }
 }

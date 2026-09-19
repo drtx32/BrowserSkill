@@ -127,6 +127,17 @@ commands and report their route, revision, freshness, completeness, scope, and
 index health. They never synchronously reconcile, backfill, observe, or grant
 mutation authority. Use `bsk wiki status` for the current scoped page receipt
 and `bsk wiki delta --from-revision <n>` for changes since a known revision.
+The normal session-scoped path discovers the one active page already attached
+to the controlled session, so it does not require internal page/document IDs:
+
+```sh
+bsk wiki retrieve --text "invoice" --session default
+```
+
+Use `bsk wiki current --session default` to inspect the resolved page instance,
+revision, tab/document/origin scope, freshness, completeness, and index-related
+receipt metadata. If multiple active pages match, provide the complete explicit
+scope from that receipt rather than adopting an unknown tab.
 
 Storage/maintenance keeps local evidence and indexes up to date and may lag.
 Retrieval/consumption reads only what is already materialized; an incomplete,
