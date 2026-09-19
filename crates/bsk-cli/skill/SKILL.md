@@ -53,6 +53,10 @@ turns and human handoffs; use `bsk session stop` only for an explicit reset/end
 request or an unrecoverable browser failure. This workflow reuses the existing
 browser profile and must not introduce profile or `data_dir` management.
 
+Do not start a second session after `bootstrap`. If a task explicitly needs a
+new Agent Window instead, use `bsk session start --json` as the alternate
+startup path and retain its returned session id for that task.
+
 When resuming work, `bsk session history --json --limit 20` returns a bounded,
 redacted history of recent navigation/actions, transfers, help requests and
 handoff/recovery markers. Use it to avoid repeating completed actions; it does
@@ -79,10 +83,11 @@ extend a handoff, and `bsk lease release` before explicitly handing control to
 another agent. Expiry or a daemon/client crash releases mutation authority
 without closing the browser or changing its login/page state.
 
-1. Define success from the user's request. Start `bsk session start --json` and
-   retain its `session_id`. With multiple browsers, run `bsk browsers` and add
-   `--browser <id-or-label>` to start. For background work, add `--no-focus` to
-   `session start` only.
+1. Define success from the user's request. After the default `bootstrap` path,
+   use the logical `default` session. For the alternate `session start` path,
+   retain its returned `session_id`. With multiple browsers, run `bsk browsers`
+   and add `--browser <id-or-label>` to start. For background work, add
+   `--no-focus` to `session start` only.
 2. For a new page, navigate; for an existing user tab, follow **Borrowing** below.
    Read the page before interacting:
 
@@ -98,15 +103,18 @@ without closing the browser or changing its login/page state.
    stale or ambiguous failure, or a meaningful state change that invalidates
    the target. Check an ambiguous result once; once success is visible, stop
    acting rather than refreshing or checking again.
-4. Always run `bsk session stop <id>` on success and failure, unless keeping the
-   session open is part of the user's request. This also returns borrowed tabs.
-   Returned tabs stay open in the user's window. Do not rely on idle cleanup
-   or stop/restart the shared daemon to finish a task.
+4. Keep the bootstrapped `default` session open across agent turns and human
+   handoffs. Run `bsk session stop <id>` only for an explicit task/session end,
+   an explicit reset, or an unrecoverable browser failure; stop a session created
+   solely for a disposable task when that task ends. Stopping also returns
+   borrowed tabs, which stay open in the user's window. Do not rely on idle
+   cleanup or stop/restart the shared daemon to finish a task.
 
 Replace `<id>`, example refs and values with actual results and task inputs.
-Every session-scoped command needs `--session <id>`; `session stop` takes the ID
-positionally. For unfamiliar commands or flags, consult `bsk --help` or
-`bsk <command...> --help` instead of guessing; no need to read all help at startup.
+Pass `--session <id>` explicitly when operating outside the default session;
+session-scoped commands that support it default to `default`. `session stop`
+takes the ID positionally. For unfamiliar commands or flags, consult `bsk --help`
+or `bsk <command...> --help` instead of guessing; no need to read all help at startup.
 When following a trace, use its semantic targets and values in order, not its old
 refs. Stop at the requested goal; a trace grants no additional authorization.
 
@@ -269,8 +277,13 @@ excluded; report this range rather than claiming all feed entries were loaded.
 Use a session-controlled tab and stable viewport; `--tab-id` targets a tab without
 selecting it or focusing the window. Switching to another tab does not cancel
 capture; navigation, loss of control or a debugger reconnection does.
-Internal browser pages, the Web Store, nested scrolling
-panels and virtualized lists are unsupported. Capture/encoding defaults to 2m;
+Internal browser pages and the Web Store are unsupported. By default, full-page
+capture follows the document scroll and does not traverse nested scrolling panels
+or virtualized lists. For a detected semantic nested/virtualized list, use
+`bsk screenshot --full-page --virtualized`; traversal uses bounded semantic
+windows and may return `complete=false` with a `termination` reason. If no
+supported semantic container is detected, the virtualized capture is unsupported.
+Capture/encoding defaults to 2m;
 `--timeout 5m` extends it only in full-page mode. Allow the shell enough time for
 capture plus transfer. Respect cancellation; do not blindly retry endless pages
 or substitute a viewport image when an older extension rejects full-page capture.
@@ -305,6 +318,7 @@ inspect `effect_state=unknown` before retrying with a new capture.
 
 ```sh
 bsk upload @e3 --file ./report.pdf --session <id>
+bsk upload @e3 --mode drop --file ./part-1.pdf --file ./part-2.pdf --session <id>
 bsk download @e3 --out ./report.pdf --session <id>
 ```
 
@@ -312,6 +326,8 @@ Upload discloses the file to the site; download accepts site-controlled bytes.
 Use agent-local paths, not browser-internal staging paths.
 
 - Default upload clicks an upload button/label and intercepts its file chooser.
+- Repeat `--file` for a multiple-file input. Use `--mode drop` only for a clear
+  attachment drop zone or composer when the input mode cannot activate the chooser.
 - If `reason=file_input_not_activated` and `effect_state=none`, re-observe. Try
   `--mode drop` once only on a clear attachment target such as a drop zone or
   composer, never whitespace or an ambiguous container. Otherwise follow the
