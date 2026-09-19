@@ -41,6 +41,7 @@ pub mod upload;
 pub mod waits;
 pub mod wheel;
 pub mod window;
+pub mod wiki;
 
 use clap::{Args, Parser, Subcommand};
 
@@ -70,6 +71,7 @@ use crate::cli::upload::UploadArgs;
 use crate::cli::waits::{WaitForNavigationArgs, WaitMsArgs};
 use crate::cli::wheel::WheelArgs;
 use crate::cli::window::WindowCmd;
+use crate::cli::wiki::WikiCmd;
 
 /// Tool calls wait slightly longer than the daemon's 30s tool timeout so
 /// callers receive the structured daemon timeout instead of dropping the
@@ -146,6 +148,9 @@ pub enum Command {
 
     /// Agent Window management commands.
     Window(WindowCmd),
+
+    /// Read-only Browser Wiki and bounded retrieval.
+    Wiki(WikiCmd),
 
     /// Emulate a mobile device environment (viewport, UA, touch) on a tab.
     Emulate(EmulateArgs),

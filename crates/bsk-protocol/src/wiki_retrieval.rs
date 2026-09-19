@@ -169,6 +169,7 @@ pub struct RetrievalEnvelope {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompiledWikiView {
     pub page_instance_id: String,
+    pub source: RetrievalSource,
     pub revision: u64,
     pub scope: crate::wiki::WikiScope,
     pub completeness: Completeness,
@@ -180,6 +181,7 @@ pub struct CompiledWikiView {
     pub ownership: Option<Value>,
     pub blockers: Vec<String>,
     pub uncertainty: Vec<String>,
+    pub receipt: RetrievalReceipt,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -389,6 +391,8 @@ impl RetrievalRouter {
 
     pub fn compile(&self, state: &WikiReadState, query: &RetrievalQuery) -> CompiledWikiView {
         let route = self.route(state, query);
+        let source = route.source;
+        let receipt = route.receipt.clone();
         let active_regions = state
             .regions
             .iter()
@@ -427,6 +431,7 @@ impl RetrievalRouter {
             .collect();
         CompiledWikiView {
             page_instance_id: state.page_instance.page_instance_id.clone(),
+            source,
             revision: state.page_instance.revision,
             scope: state.page_instance.scope.clone(),
             completeness: state.page_instance.completeness.clone(),
@@ -438,6 +443,7 @@ impl RetrievalRouter {
             ownership: state.ownership.clone(),
             blockers,
             uncertainty,
+            receipt,
         }
     }
 
@@ -511,6 +517,9 @@ impl RetrievalRouter {
         if state.page_instance.completeness != Completeness::Complete {
             blockers
                 .push(format!("wiki_state_{:?}", state.page_instance.completeness).to_lowercase());
+            if state.page_instance.completeness == Completeness::FullRefreshRequired {
+                blockers.push("full_refresh_required".into());
+            }
         }
         RetrievalEnvelope {
             source,
@@ -560,6 +569,8 @@ impl RetrievalRouter {
         );
         let mut blockers = envelope.blockers;
         blockers.push(message.into());
+        if reason == "stale_index" { blockers.push("index-drift".into()); }
+        if reason == "insufficient_current_state" { blockers.push("unavailable".into()); }
         envelope.blockers = blockers;
         envelope
     }

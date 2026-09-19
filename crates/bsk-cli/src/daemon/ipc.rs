@@ -260,7 +260,7 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
                 },
-                Method::WikiCapabilities | Method::WikiStatus | Method::WikiEvents | Method::WikiDelta => {
+                Method::WikiCapabilities | Method::WikiStatus | Method::WikiEvents | Method::WikiDelta | Method::WikiView | Method::WikiRetrieve => {
                     handle_wiki_read(method, &state, params)
                 }
                 Method::SessionStart => match handle_session_start(&state, rpc_id, params).await {
@@ -360,7 +360,9 @@ fn wiki_capabilities() -> Value {
             {"name": "wiki.capabilities", "version": "1.0"},
             {"name": "wiki.status", "version": "1.0"},
             {"name": "wiki.events", "version": "1.0"},
-            {"name": "wiki.delta", "version": "1.0"}
+            {"name": "wiki.delta", "version": "1.0"},
+            {"name": "wiki.view", "version": "1.0"},
+            {"name": "wiki.retrieve", "version": "1.0"}
         ]
     })
 }
@@ -405,6 +407,18 @@ fn handle_wiki_read(method: Method, state: &Arc<DaemonState>, params: Value) -> 
             match state.wiki.scoped_delta(page_id, &scope, from_revision) {
                 Ok(delta) => ResponseBody::Ok(serde_json::to_value(delta).unwrap_or(Value::Null)),
                 Err(error) => ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: error.to_string(), data: Some(serde_json::json!({"fallback": "tool.observe"})) }),
+            }
+        }
+        Method::WikiView | Method::WikiRetrieve => {
+            let Some(read_state) = state.wiki.read_state(page_id, &scope) else { return wiki_scope_denied(); };
+            let router = bsk_protocol::RetrievalRouter::default();
+            let query = params.get("query").cloned()
+                .and_then(|value| serde_json::from_value(value).ok())
+                .unwrap_or_default();
+            if method == Method::WikiView {
+                ResponseBody::Ok(serde_json::to_value(router.compile(&read_state, &query)).unwrap_or(Value::Null))
+            } else {
+                ResponseBody::Ok(serde_json::to_value(router.route(&read_state, &query)).unwrap_or(Value::Null))
             }
         }
         _ => ResponseBody::Err(RpcError { code: ErrorCode::UnknownMethod, message: "not a Wiki read method".into(), data: None }),

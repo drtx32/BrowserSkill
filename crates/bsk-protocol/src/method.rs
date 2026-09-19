@@ -39,6 +39,10 @@ pub enum Method {
     WikiEvents,
     #[serde(rename = "wiki.delta")]
     WikiDelta,
+    #[serde(rename = "wiki.view")]
+    WikiView,
+    #[serde(rename = "wiki.retrieve")]
+    WikiRetrieve,
 
     #[serde(rename = "session.start")]
     SessionStart,
@@ -241,7 +245,9 @@ impl Method {
             | Method::WikiCapabilities
             | Method::WikiStatus
             | Method::WikiEvents
-            | Method::WikiDelta => MethodEffect::PassiveRead,
+            | Method::WikiDelta
+            | Method::WikiView
+            | Method::WikiRetrieve => MethodEffect::PassiveRead,
 
             // Session lifecycle — not gated.
             Method::SessionStart
@@ -428,7 +434,7 @@ mod tests {
 
     #[test]
     fn wiki_reads_are_passive_and_do_not_require_a_lease() {
-        for method in [Method::WikiCapabilities, Method::WikiStatus, Method::WikiEvents, Method::WikiDelta] {
+        for method in [Method::WikiCapabilities, Method::WikiStatus, Method::WikiEvents, Method::WikiDelta, Method::WikiView, Method::WikiRetrieve] {
             assert_eq!(method.effect(), MethodEffect::PassiveRead);
             assert!(!method.is_mutating());
             assert!(!method.requires_control_lease());

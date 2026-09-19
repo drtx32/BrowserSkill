@@ -14,6 +14,7 @@ use std::sync::Mutex;
 use anyhow::{Context, Result, bail};
 use bsk_protocol::{ChangedRecord, Completeness, EventSource, PageInstance, SemanticDelta, WikiEvent,
     WikiScope, WIKI_SCHEMA_VERSION};
+use bsk_protocol::wiki_retrieval::{LocalSemanticIndex, WikiReadState};
 use bsk_protocol::wiki::EventKind as WikiEventKind;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -62,6 +63,37 @@ impl ShadowWikiStore {
         self.state.lock().ok()?.pages.get(page_id)
             .filter(|page| &page.page.scope == scope)
             .map(|page| page.events.clone())
+    }
+
+    /// Rehydrate the already-materialized local read projection. Retrieval is
+    /// intentionally passive: this method never observes, reconciles, or
+    /// builds/refreshes an index.
+    pub fn read_state(&self, page_id: &str, scope: &WikiScope) -> Option<WikiReadState> {
+        let state = self.state.lock().ok()?;
+        let persisted = state.pages.get(page_id)?;
+        if &persisted.page.scope != scope { return None; }
+        let mut read = WikiReadState {
+            page_instance: persisted.page.clone(), regions: Vec::new(), refs: Vec::new(),
+            claims: Vec::new(), deltas: Vec::new(), semantic_chunks: Vec::new(),
+            semantic_index: None, session: None, ownership: None, blockers: Vec::new(),
+        };
+        for event in &persisted.events {
+            let Some(object) = event.payload.as_object() else { continue; };
+            extend_json(object, "regions", &mut read.regions);
+            extend_json(object, "refs", &mut read.refs);
+            extend_json(object, "claims", &mut read.claims);
+            extend_json(object, "deltas", &mut read.deltas);
+            extend_json(object, "semantic_chunks", &mut read.semantic_chunks);
+            if let Some(value) = object.get("semantic_index") {
+                read.semantic_index = serde_json::from_value::<LocalSemanticIndex>(value.clone()).ok();
+            }
+            if let Some(value) = object.get("session") { read.session = Some(value.clone()); }
+            if let Some(value) = object.get("ownership") { read.ownership = Some(value.clone()); }
+            if let Some(values) = object.get("blockers").and_then(Value::as_array) {
+                read.blockers.extend(values.iter().filter_map(Value::as_str).map(str::to_owned));
+            }
+        }
+        Some(read)
     }
 
     pub fn events(&self, page_id: &str) -> Vec<WikiEvent> {
@@ -239,6 +271,12 @@ impl ShadowWikiStore {
                 Err(error.context("wiki persistence failed; full refresh required"))
             }
         }
+    }
+}
+
+fn extend_json<T: for<'de> Deserialize<'de>>(object: &serde_json::Map<String, Value>, key: &str, out: &mut Vec<T>) {
+    if let Some(values) = object.get(key).and_then(Value::as_array) {
+        out.extend(values.iter().filter_map(|value| serde_json::from_value(value.clone()).ok()));
     }
 }
 

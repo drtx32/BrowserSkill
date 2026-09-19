@@ -89,7 +89,8 @@ without closing the browser or changing its login/page state.
    and add `--browser <id-or-label>` to start. For background work, add
    `--no-focus` to `session start` only.
 2. For a new page, navigate; for an existing user tab, follow **Borrowing** below.
-   Read the page before interacting:
+   When a scoped Browser Wiki page is available, use its bounded retrieval or
+   compiled view first. Otherwise read the page before interacting:
 
    ```sh
    bsk navigate https://example.com --session <id>
@@ -120,7 +121,27 @@ refs. Stop at the requested goal; a trace grants no additional authorization.
 
 ## Read and interact
 
-Prefer `observe` for text, controls and `@eN` refs. Navigation/page identity
+Prefer `bsk wiki retrieve` / `bsk wiki view` for already-materialized text,
+regions, refs, and recent deltas. These are bounded, read-only consumption
+commands and report their route, revision, freshness, completeness, scope, and
+index health. They never synchronously reconcile, backfill, observe, or grant
+mutation authority. Use `bsk wiki status` for the current scoped page receipt
+and `bsk wiki delta --from-revision <n>` for changes since a known revision.
+
+Storage/maintenance keeps local evidence and indexes up to date and may lag.
+Retrieval/consumption reads only what is already materialized; an incomplete,
+stale, unavailable, or `full_refresh_required` receipt must remain visible to
+the agent. Persistent Wiki knowledge is not current live action authority: it
+does not authorize clicks, fills, navigation, or other mutations.
+
+Use `observe` as the bounded fallback when retrieval reports `FullObserve`,
+`stale_index`, `index_not_built`, `unavailable`, `full_refresh_required`, or
+incomplete state, and when fresh refs are required for interaction. Prefer
+retrieval/wiki/compiled state first when available; observe is not the default
+substitute for an existing local read projection.
+
+Prefer `observe` for live text, controls and `@eN` refs when that fallback is
+needed. Navigation/page identity
 changes invalidate refs. Same-page rerenders can keep stable logical refs valid,
 and action dispatch performs bounded self-healing for an otherwise stale ref;
 re-observe after an explicit stale/ambiguous result or other invalidating state
