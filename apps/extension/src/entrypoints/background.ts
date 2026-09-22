@@ -1,5 +1,8 @@
 import { i18n } from "@browser-skill/i18n";
 import { ChromiumCdp } from "@/browser-driver/chromium-cdp";
+import { LocalDebugArchive } from "@/debug/archive";
+import { attachDebugBridge } from "@/debug/bridge";
+import { DebugManager } from "@/debug/manager";
 import { getAuditEnabled } from "@/lib/audit";
 import { attachAuditBridge } from "@/lib/audit-bridge";
 import { ConnectionController } from "@/lib/connection-controller";
@@ -78,6 +81,11 @@ export default defineBackground(() => {
       const session = sessions.findByWindowId(tab.windowId);
       return session !== null && (!session.remote || isAgentControlledTab(session, tabId));
     },
+  });
+  const debug = new DebugManager(sessions, cdp, chrome.tabs, Date.now, new LocalDebugArchive());
+  attachDebugBridge(sessions, debug);
+  chrome.debugger.onDetach.addListener((source) => {
+    if (source.tabId !== undefined) debug.stopTab(source.tabId, "debugger_detached");
   });
   const sessionsLive = attachSessionsLiveFlag({ manager: sessions });
   let overlayGeneration = 0;
@@ -196,6 +204,7 @@ export default defineBackground(() => {
   }
 
   function onOverlaySessionStateChanged(): void {
+    debug.sync();
     void sessionsLive.syncFromManager();
     const liveSessionIds = new Set(sessions.list().map((ctx) => ctx.sessionId));
     for (const sessionId of controlModes.keys()) {
@@ -249,8 +258,11 @@ export default defineBackground(() => {
     if (!sessions.findByWindowId(tab.windowId)) return;
     void pushOverlayStateForTab(tab.id, tab.windowId);
   });
+  chrome.tabs.onDetached.addListener((tabId) => debug.releaseTab(tabId));
   chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+    debug.stopTab(tabId, "tab_closed");
     sessions.forgetClosedTab(tabId, { isWindowClosing: removeInfo.isWindowClosing });
+    debug.sync();
   });
   // Re-sync the storage.session flag on SW startup so a previous SW's
   // stale `true` does not keep waking us on every page load until the
@@ -301,6 +313,7 @@ export default defineBackground(() => {
   });
   void interactionPreferences.readyOrFallback();
   const dispatcher = new ToolDispatcher({
+    debug,
     interactionPreferences,
     transport,
     sessions,
@@ -421,6 +434,7 @@ export default defineBackground(() => {
     ]);
     controller.setAuditEnabled(auditEnabled);
     const cleanup = async () => {
+      debug.dispose();
       const report = await cleanupAfterDisconnect();
       if (report.failures.length > 0) {
         throw new Error(
