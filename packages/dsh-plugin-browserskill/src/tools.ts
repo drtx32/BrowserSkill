@@ -49,6 +49,8 @@ export interface PluginConfig {
    * the suite is registered at apply time (legacy always-on behavior).
    */
   lazyTools: boolean;
+  /** Presentation-only catalog; execution authority is unchanged. */
+  surface: "verbs" | "starter" | "full" | "debug" | "advanced";
 }
 
 export interface ToolDeps {

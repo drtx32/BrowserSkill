@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it, vi } from "vitest";
-import { registerBrowserTools } from "../src/browser-tools";
+import { registerAgentVerbTools, registerBrowserTools } from "../src/browser-tools";
 import { ObservationService } from "../src/observation";
 import { KeyedExecutor } from "../src/queue";
 import {
@@ -25,6 +25,7 @@ const CONFIG: PluginConfig = {
   thumbnailIntervalMs: 1500,
   idleIntervalMs: 8000,
   lazyTools: false,
+  surface: "full",
 };
 
 /** An observation service with the feature off: instrumentation becomes a no-op. */
@@ -244,6 +245,29 @@ const EXPECTED_ACTIONS = {
 } as const;
 
 describe("tool registration", () => {
+  it("registers only the frozen five task verbs for the compact catalog", () => {
+    const { ctx, tools } = makeCtx();
+    const { runner } = fakeRunner({});
+    const registry = new SessionRegistry(5);
+    registerAgentVerbTools({
+      ctx: ctx as never,
+      runner: runner as BskRunner,
+      registry,
+      config: CONFIG,
+      observation: disabledObservation({ ctx, runner: runner as BskRunner, registry }),
+      queue: new KeyedExecutor(),
+    });
+    expect([...tools.keys()].sort()).toEqual([
+      "browser_act",
+      "browser_form",
+      "browser_navigate",
+      "browser_read",
+      "browser_recover",
+    ]);
+    expect(tools.get("browser_inspect")).toBeUndefined();
+    expect(tools.get("browser_interact")).toBeUndefined();
+  });
+
   it("registers exactly six public schemas with the complete action contract", () => {
     const { tools } = setup({});
     expect([...tools.keys()].sort()).toEqual(Object.keys(EXPECTED_ACTIONS).sort());

@@ -339,6 +339,75 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
   },
 ];
 
+/**
+ * Compact agent-facing aliases over the existing operation definitions. These
+ * are presentation policy only: the full suite remains the compatibility and
+ * debug surface, and all execution still goes through the same handlers.
+ */
+const AGENT_VERB_SPECS: BrowserToolSpec[] = [
+  {
+    name: "browser_read",
+    description: "Read bounded browser state using the existing observation operations.",
+    actions: { observe: "inspect.observe", snapshot: "inspect.snapshot", html: "inspect.html", screenshot: "inspect.screenshot" },
+    parameters: {
+      session: SESSION_PARAM,
+      tabId: TAB_ID_PARAM,
+      maxDepth: { type: "integer" },
+      maxTokens: { type: "integer" },
+      cursor: { type: "string" },
+      ref: { type: "string", description: "Current live binding for scoped evidence." },
+      maxBytes: { type: "integer" },
+    },
+  },
+  {
+    name: "browser_act",
+    description: "Perform one bounded interaction through the existing target and policy checks.",
+    actions: {
+      click: "interact.click", hover: "interact.hover", wheel: "interact.wheel",
+      "scroll-to": "interact.scroll-to", focus: "interact.focus", blur: "interact.blur", press: "interact.press",
+    },
+    parameters: {
+      session: SESSION_PARAM, tabId: TAB_ID_PARAM, target: TARGET_PARAM,
+      button: { type: "string", enum: ["left", "middle", "right"] }, clickCount: { type: "integer" },
+      captureId: { type: "string" }, imageX: { type: "number" }, imageY: { type: "number" },
+      modifiers: { type: "array", items: { type: "string", enum: ["alt", "ctrl", "meta", "shift"] } },
+      settleMs: { type: "integer" }, deltaX: { type: "number" }, deltaY: { type: "number" },
+      timeoutMs: TIMEOUT_MS_PARAM, key: { type: "string" }, holdMs: { type: "integer" },
+    },
+  },
+  {
+    name: "browser_form",
+    description: "Apply bounded fill/select input through the existing fail-closed form operations.",
+    actions: { fill: "interact.fill", select: "interact.select" },
+    parameters: {
+      session: SESSION_PARAM, tabId: TAB_ID_PARAM, target: TARGET_PARAM,
+      value: { type: "string" }, noClear: { type: "boolean" },
+      values: { type: "array", items: { type: "string" } }, timeoutMs: TIMEOUT_MS_PARAM,
+    },
+  },
+  {
+    name: "browser_navigate",
+    description: "Start or navigate the Agent Window using existing session and navigation semantics.",
+    actions: { start: "session.start", navigate: "page.navigate", back: "page.back", forward: "page.forward", reload: "page.reload", wait: "page.wait" },
+    parameters: {
+      ...SESSION_STOP_PARAMS, session: SESSION_PARAM, tabId: TAB_ID_PARAM,
+      url: { type: "string" }, width: { type: "integer" }, height: { type: "integer" },
+      noFocus: { type: "boolean" }, browser: BROWSER_PARAM, device: { type: "string", enum: DEVICE_PRESETS },
+      waitUntil: WAIT_UNTIL_PARAM, timeoutMs: TIMEOUT_MS_PARAM, hard: { type: "boolean" },
+    },
+  },
+  {
+    name: "browser_recover",
+    description: "Request explicit human assistance while preserving fail-closed protected-state boundaries.",
+    actions: { "request-help": "assist.request-help" },
+    parameters: {
+      session: SESSION_PARAM, tabId: TAB_ID_PARAM, prompt: { type: "string", required: true },
+      title: { type: "string" }, targets: { type: "array", items: { type: "string" } }, timeoutMs: TIMEOUT_MS_PARAM,
+      completionCriteria: { type: "object", additionalProperties: false, properties: { any: { type: "array", items: { type: "object" } }, all: { type: "array", items: { type: "object" } }, stableForMs: { type: "integer" } } },
+    },
+  },
+];
+
 function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, ToolDefinition> {
   const indexed = new Map<string, ToolDefinition>();
   for (const definition of definitions) {
@@ -348,7 +417,7 @@ function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, Too
     indexed.set(definition.name, definition);
   }
 
-  const routed = new Set(BROWSER_TOOL_SPECS.flatMap((spec) => Object.values(spec.actions)));
+  const routed = new Set([...BROWSER_TOOL_SPECS, ...AGENT_VERB_SPECS].flatMap((spec) => Object.values(spec.actions)));
   const missing = [...routed].filter((name) => !indexed.has(name));
   const unreachable = [...indexed.keys()].filter((name) => !routed.has(name));
   if (missing.length > 0 || unreachable.length > 0) {
@@ -368,6 +437,17 @@ function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, Too
 export function registerBrowserTools(deps: ToolDeps): () => void {
   const definitions = indexOperations(createBrowserOperationDefinitions(deps));
   const disposers = BROWSER_TOOL_SPECS.map((spec) =>
+    deps.ctx.tools.register(defineBrowserTool(spec, definitions)),
+  ).filter((dispose): dispose is () => void => typeof dispose === "function");
+  return () => {
+    for (const dispose of disposers.splice(0)) dispose();
+  };
+}
+
+/** Register only the frozen five-verb agent-facing catalog. */
+export function registerAgentVerbTools(deps: ToolDeps): () => void {
+  const definitions = indexOperations(createBrowserOperationDefinitions(deps));
+  const disposers = AGENT_VERB_SPECS.map((spec) =>
     deps.ctx.tools.register(defineBrowserTool(spec, definitions)),
   ).filter((dispose): dispose is () => void => typeof dispose === "function");
   return () => {

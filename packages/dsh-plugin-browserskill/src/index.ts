@@ -13,7 +13,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import Schema from "@deepseek-ai/schemastery";
 import { armArchiveCleanup } from "./archive-cleanup";
-import { registerBrowserTools } from "./browser-tools";
+import { registerAgentVerbTools, registerBrowserTools } from "./browser-tools";
 import { armLazyTools } from "./lazy-tools";
 import { ObservationService } from "./observation";
 import { registerObservationRoutes } from "./observation-http";
@@ -59,6 +59,15 @@ export const Config = Schema.object({
       "Reveal the browser_* tools only after the browser-skill skill is invoked (default true); " +
         "false registers the full suite at load.",
     ),
+  surface: Schema.union([
+    Schema.const("verbs"),
+    Schema.const("starter"),
+    Schema.const("full"),
+    Schema.const("debug"),
+    Schema.const("advanced"),
+  ])
+    .default("verbs")
+    .description("Presentation-only agent catalog: frozen task verbs or the legacy full suite."),
 });
 
 export type Config = PluginConfig;
@@ -83,6 +92,7 @@ export function apply(
     thumbnailIntervalMs: config.thumbnailIntervalMs ?? 1500,
     idleIntervalMs: config.idleIntervalMs ?? 8000,
     lazyTools: config.lazyTools ?? true,
+    surface: config.surface ?? "verbs",
   };
   const runner = options.runnerFactory?.(resolved.bskPath) ?? createBskRunner(resolved.bskPath);
   const registry = new SessionRegistry(resolved.maxSessions);
@@ -120,7 +130,8 @@ export function apply(
   // exact agent context at startup so DSH always loads the browser_* protocol
   // instructions; the shared CLI skill remains untouched for other agents.
   const disarmAgentSkill = armAgentScopedBskSkill(ctx);
-  const registerSuite = () => registerBrowserTools(deps);
+  const registerSuite = () =>
+    resolved.surface === "full" ? registerBrowserTools(deps) : registerAgentVerbTools(deps);
   const removeSuite = resolved.lazyTools ? armLazyTools(ctx, registerSuite) : registerSuite();
   // Route registration rides ctx.inject: the webServer service may be provided
   // AFTER this plugin loads, and in headless compositions it never appears (the
@@ -165,6 +176,7 @@ export function apply(
 
 export { armArchiveCleanup, ownerSessionIds } from "./archive-cleanup";
 export { registerBrowserTools } from "./browser-tools";
+export { registerAgentVerbTools } from "./browser-tools";
 export type { ObservationEvent, ObservationOptions, SessionObservation } from "./observation";
 export { ObservationService } from "./observation";
 export { registerObservationRoutes } from "./observation-http";
