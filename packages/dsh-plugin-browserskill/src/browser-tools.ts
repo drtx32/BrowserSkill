@@ -400,8 +400,8 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
   {
     name: "browser_form",
     description:
-      "Apply bounded fill/select input through the existing fail-closed form operations.",
-    actions: { fill: "interact.fill", select: "interact.select" },
+      "Apply bounded fill/select input as a materialized batch through the existing fail-closed form operations.",
+    actions: { batch: "form.batch", fill: "form.batch", select: "form.batch" },
     parameters: {
       session: SESSION_PARAM,
       tabId: TAB_ID_PARAM,
@@ -409,6 +409,21 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
       value: { type: "string" },
       noClear: { type: "boolean" },
       values: { type: "array", items: { type: "string" } },
+      independentFields: { type: "boolean", description: "Opt into independent partial progress." },
+      fields: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            target: { type: "string", required: true },
+            action: { type: "string", required: true, enum: ["fill", "select"] },
+            value: { type: "string" },
+            values: { type: "array", items: { type: "string" } },
+            section: { type: "string" },
+          },
+        },
+      },
       timeoutMs: TIMEOUT_MS_PARAM,
     },
   },

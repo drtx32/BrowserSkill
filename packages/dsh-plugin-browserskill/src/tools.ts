@@ -17,8 +17,10 @@ import {
   type ToolRunContext,
 } from "@deepseek-ai/dsh-tools";
 import { ownerSessionIds } from "./archive-cleanup";
+import { type FormField, type FormMaterialization, runFormRuntime } from "./form-runtime";
 import { trySaveScreenshot } from "./image";
 import { actionForLabel, type ObservationService } from "./observation";
+import { runnerTimeout } from "./phase-one-runtime";
 import { registerPhaseOneTools } from "./phase-one-tools";
 import type { KeyedExecutor } from "./queue";
 import {
@@ -30,7 +32,7 @@ import {
 } from "./runner";
 import { SessionStarts } from "./session-starts";
 import type { SessionRegistry } from "./sessions";
-import { BROWSER_PARAM, SESSION_PARAM, SESSION_STOP_PARAMS } from "./tool-params";
+import { BROWSER_PARAM, SESSION_PARAM, SESSION_STOP_PARAMS, TIMEOUT_MS_PARAM } from "./tool-params";
 
 /** Plugin configuration resolved from the Schemastery schema in index.ts. */
 export interface PluginConfig {
@@ -160,6 +162,34 @@ function presentTerminalResult(_args: never, result: ToolResult) {
   if (block === undefined || block.type !== "text") return undefined;
   if (result.isError) return undefined;
   return { card: "terminal" as const, output: block.text, exitCode: 0 };
+}
+
+function formFields(args: Record<string, unknown>): FormField[] {
+  if (Array.isArray(args.fields)) return args.fields as FormField[];
+  const action = args.action;
+  if (action !== "fill" && action !== "select")
+    throw new Error("form action must be fill, select, or batch");
+  return [
+    {
+      action,
+      target: String(args.target ?? ""),
+      ...(typeof args.value === "string" ? { value: args.value } : {}),
+      ...(Array.isArray(args.values) ? { values: args.values as string[] } : {}),
+    },
+  ];
+}
+
+function materializationFromReply(reply: unknown): FormMaterialization {
+  const value = (reply ?? {}) as Record<string, unknown>;
+  return {
+    revision:
+      typeof value.revision === "string" || typeof value.revision === "number"
+        ? value.revision
+        : undefined,
+    fields: Array.isArray(value.fields)
+      ? (value.fields as FormMaterialization["fields"])
+      : undefined,
+  };
 }
 
 function abortError(): Error {
@@ -598,6 +628,112 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
   };
   registerObservationTool("snapshot");
   registerObservationTool("observe");
+
+  register(
+    defineTool({
+      name: "form.batch",
+      description:
+        "Execute bounded fill/select fields as one materialized form batch. Atomic preflight is the default; " +
+        "targets use the existing BrowserSkill operation path and caller policy flags are ignored.",
+      parameters: {
+        session: SESSION_PARAM,
+        independentFields: {
+          type: "boolean",
+          description: "Opt into independent partial progress.",
+        },
+        action: { type: "string", enum: ["fill", "select", "batch"] },
+        target: { type: "string" },
+        value: { type: "string" },
+        values: { type: "array", items: { type: "string" } },
+        fields: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              target: { type: "string", required: true },
+              action: { type: "string", required: true, enum: ["fill", "select"] },
+              value: { type: "string" },
+              values: { type: "array", items: { type: "string" } },
+              section: { type: "string" },
+            },
+          },
+        },
+        timeoutMs: TIMEOUT_MS_PARAM,
+      },
+      output: {
+        schema: { type: "json" },
+        render: (_args, value) => [{ type: "text", text: JSON.stringify(value) }],
+      },
+      async execute(args, exec) {
+        const sessionId = registry.resolve(
+          typeof args.session === "string" ? args.session : undefined,
+          "browser_form",
+        );
+        const timeout = runnerTimeout(
+          deps,
+          typeof args.timeoutMs === "number" ? args.timeoutMs : undefined,
+        );
+        const materialize = async (): Promise<FormMaterialization> =>
+          materializationFromReply(
+            await runBsk(
+              deps,
+              exec,
+              ["snapshot", "--session", sessionId],
+              "form materialize",
+              sessionId,
+              timeout,
+            ),
+          );
+        const runtime = await runFormRuntime(formFields(args), {
+          independentFields: args.independentFields === true,
+          materialize,
+          mutate: async (field) => {
+            const command = [field.action, "--session", sessionId];
+            if (field.action === "fill") command.push("--value", field.value ?? "");
+            else for (const value of field.values ?? []) command.push("--value", value);
+            command.push(field.target);
+            const reply = (await runBsk(
+              deps,
+              exec,
+              command,
+              `form ${field.action}`,
+              sessionId,
+              timeout,
+            )) as Record<string, unknown>;
+            return {
+              tabId: Number(reply.tab_id ?? 0),
+              ...(typeof reply.value_length === "number"
+                ? { valueLength: reply.value_length }
+                : {}),
+              ...(Array.isArray(reply.selected_values)
+                ? { selectedValues: reply.selected_values as string[] }
+                : {}),
+              ...(Array.isArray(reply.selected_labels)
+                ? { selectedLabels: reply.selected_labels as string[] }
+                : {}),
+              ...(typeof reply.trigger === "string" ? { trigger: reply.trigger } : {}),
+              ...(typeof reply.revision === "string" || typeof reply.revision === "number"
+                ? { revision: reply.revision }
+                : {}),
+              ...(typeof reply.fallback_reason === "string"
+                ? { fallback_reason: reply.fallback_reason }
+                : {}),
+            };
+          },
+          rePerceive: async (reason, revision) => {
+            const command = ["snapshot", "--session", sessionId, "--trigger", reason];
+            if (revision !== undefined) command.push("--revision", String(revision));
+            return materializationFromReply(
+              await runBsk(deps, exec, command, `form re-perceive ${reason}`, sessionId, timeout),
+            );
+          },
+        });
+        return { session: sessionId, ...runtime } as never;
+      },
+      presentResult: presentTerminalResult,
+    }),
+  );
 
   register(
     defineTool({

@@ -80,7 +80,9 @@ describe("dispose cleanup ownership", () => {
     };
     apply(
       ctx as never,
-      { maxSessions: 5, lazyTools: false },
+      // This fixture exercises legacy lifecycle/inspect primitives; request
+      // the compatibility surface explicitly after ELI-305's verbs default.
+      { maxSessions: 5, lazyTools: false, surface: "full" },
       { runnerFactory: () => runner, startJournal: memoryStartJournal() },
     );
 

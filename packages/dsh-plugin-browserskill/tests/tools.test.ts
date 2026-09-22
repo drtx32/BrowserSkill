@@ -206,12 +206,17 @@ function setup(
   responses: Record<string, unknown>,
   services: Record<string, unknown> = {},
   maxSessions = 5,
+  surface?: BrowserSurface,
 ) {
   const { ctx, tools } = makeCtx(services);
   const { runner, calls } = fakeRunner(responses);
   const registry = new SessionRegistry(maxSessions);
   const config = { ...CONFIG, maxSessions };
-  registerBrowserTools({
+  const register =
+    surface === undefined
+      ? registerBrowserTools
+      : (deps: Parameters<typeof registerBrowserTools>[0]) => registerSurfaceTools(deps, surface);
+  register({
     ctx: ctx as never,
     runner: runner as BskRunner,
     registry,
@@ -1049,6 +1054,36 @@ describe("phase-one navigation tools", () => {
 });
 
 describe("phase-one support tools", () => {
+  it("browser_form executes the real batch path with one materialization", async () => {
+    const { tools, calls } = setup(
+      {
+        "session start": START_REPLY("s1"),
+        snapshot: { tab_id: 7, revision: 1, fields: [] },
+        fill: { tab_id: 7, value_length: 3 },
+        select: { tab_id: 7, selected_values: ["yes"], selected_labels: ["Yes"] },
+      },
+      {},
+      5,
+      "verbs",
+    );
+    await tools.get("browser_navigate")?.execute({ action: "start" }, makeExec());
+    const value = (await tools.get("browser_form")?.execute(
+      {
+        action: "batch",
+        fields: [
+          { action: "fill", target: "@e1", value: "abc", section: "account" },
+          { action: "select", target: "@e2", values: ["yes"], section: "account" },
+        ],
+      },
+      makeExec(),
+    )) as { receipt: { succeeded: string[]; ambiguous: string[] } };
+    expect(calls.filter((call) => call.args[0] === "snapshot")).toHaveLength(1);
+    expect(calls.map((call) => call.args[0])).toEqual(["session", "snapshot", "fill", "select"]);
+    expect(value.receipt).toEqual(
+      expect.objectContaining({ succeeded: ["@e1", "@e2"], ambiguous: [] }),
+    );
+  });
+
   it("maps request-help targets and structured completion criteria", async () => {
     const { tools, calls } = setup({
       "session start": START_REPLY("s1"),
