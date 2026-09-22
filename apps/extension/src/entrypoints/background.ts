@@ -49,8 +49,6 @@ import {
   attachRecordStepListener,
   type RecordRuntimeDeps,
 } from "@/tools/record";
-import { chromeTabsApi } from "@/tools/shared";
-import { chromeTabMutationApi } from "@/tools/tabs";
 import { detectBrowserMeta } from "@/transport/handshake";
 import { watchRemoteAuthorization } from "@/transport/remote-authorization";
 import { type RemoteEndpoint, remoteSocket } from "@/transport/remote-endpoint";
@@ -88,6 +86,7 @@ export default defineBackground(() => {
     if (source.tabId !== undefined) debug.stopTab(source.tabId, "debugger_detached");
   });
   const sessionsLive = attachSessionsLiveFlag({ manager: sessions });
+  const popupSnapshotRefreshers = new Set<() => void>();
   let overlayGeneration = 0;
   const controlModes = new Map<string, OverlayMode>();
 
@@ -212,6 +211,7 @@ export default defineBackground(() => {
     }
     overlayGeneration += 1;
     pushAllAgentOverlayStates();
+    for (const refresh of popupSnapshotRefreshers) refresh();
   }
 
   function onBrowserControlResumed(sessionId: string): void {
@@ -270,9 +270,9 @@ export default defineBackground(() => {
   void sessionsLive.refresh();
   const cleanupAfterDisconnect = createDisconnectCleanup({
     manager: sessions,
-    onSessionsChanged: () => {
-      void sessionsLive.syncFromManager();
-    },
+    // Transport loss preserves local sessions so reconnect can rebind them;
+    // refresh all session-derived UI without turning disconnect into stop.
+    onSessionsChanged: onOverlaySessionStateChanged,
   });
   const recordDeps = {
     tabsApi: chrome.tabs,
@@ -544,14 +544,29 @@ export default defineBackground(() => {
         console.debug("[browser-skill] popup post failed", err);
       }
     };
+    const postSnapshot = () => {
+      post({
+        kind: "snapshot",
+        data: { ...controller.snapshot(), sessionCount: sessions.list().length },
+      });
+    };
     const unsubscribe = controller.subscribe((snap) => {
-      post({ kind: "snapshot", data: snap });
+      post({ kind: "snapshot", data: { ...snap, sessionCount: sessions.list().length } });
     });
+    popupSnapshotRefreshers.add(postSnapshot);
     connection.onMessage.addListener((raw: unknown) => {
       const msg = raw as PopupOutbound;
       if (msg && typeof msg === "object" && "kind" in msg) {
         if (msg.kind === "set_label") {
-          void setLabel(msg.value).then(() => controller.refreshLabel());
+          // A reconnect is required for the daemon to receive the new label.
+          // Never turn a display-name edit into an implicit session teardown.
+          void dispatcher
+            .runWhenIdle(async () => {
+              await setLabel(msg.value);
+              await controller.refreshLabel();
+            })
+            .then(() => postSnapshot())
+            .catch((err) => console.error("[browser-skill] label update failed", err));
         } else if (msg.kind === "set_connection_enabled") {
           void controller.setConnectionEnabled(msg.value);
           // Persist user intent in message order, independently of slow cleanup.
@@ -563,7 +578,10 @@ export default defineBackground(() => {
         }
       }
     });
-    connection.onDisconnect.addListener(() => unsubscribe());
+    connection.onDisconnect.addListener(() => {
+      popupSnapshotRefreshers.delete(postSnapshot);
+      unsubscribe();
+    });
   });
 
   // Stash on globalThis so the SW DevTools can poke at internals.
