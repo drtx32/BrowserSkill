@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolDefinition, ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { describe, expect, it, vi } from "vitest";
-import { registerAgentVerbTools, registerBrowserTools } from "../src/browser-tools";
+import {
+  type BrowserSurface,
+  registerAgentVerbTools,
+  registerBrowserTools,
+  registerSurfaceTools,
+} from "../src/browser-tools";
 import { ObservationService } from "../src/observation";
 import { KeyedExecutor } from "../src/queue";
 import {
@@ -245,6 +250,24 @@ const EXPECTED_ACTIONS = {
 } as const;
 
 describe("tool registration", () => {
+  function registerSurfaceForTest(surface: BrowserSurface) {
+    const { ctx, tools } = makeCtx();
+    const { runner } = fakeRunner({});
+    const registry = new SessionRegistry(5);
+    registerSurfaceTools(
+      {
+        ctx: ctx as never,
+        runner: runner as BskRunner,
+        registry,
+        config: { ...CONFIG, surface },
+        observation: disabledObservation({ ctx, runner: runner as BskRunner, registry }),
+        queue: new KeyedExecutor(),
+      },
+      surface,
+    );
+    return tools;
+  }
+
   it("registers only the frozen five task verbs for the compact catalog", () => {
     const { ctx, tools } = makeCtx();
     const { runner } = fakeRunner({});
@@ -266,6 +289,40 @@ describe("tool registration", () => {
     ]);
     expect(tools.get("browser_inspect")).toBeUndefined();
     expect(tools.get("browser_interact")).toBeUndefined();
+  });
+
+  it("registers the exact progressive catalogs for every configured surface", () => {
+    const verbs = [
+      "browser_act",
+      "browser_form",
+      "browser_navigate",
+      "browser_read",
+      "browser_recover",
+    ];
+    const legacy = Object.keys(EXPECTED_ACTIONS);
+    const expected = {
+      verbs,
+      starter: [...verbs, "browser_inspect", "browser_interact"],
+      full: [...verbs, ...legacy],
+      debug: [...verbs, ...legacy],
+      advanced: [...verbs, ...legacy],
+    } as const;
+
+    for (const [surface, names] of Object.entries(expected) as [BrowserSurface, string[]][]) {
+      expect([...registerSurfaceForTest(surface).keys()].sort()).toEqual([...names].sort());
+    }
+  });
+
+  it("keeps diagnostics and lifecycle primitives off verbs but reachable on full/debug/advanced", () => {
+    const primitiveTools = ["browser_inspect", "browser_session", "browser_tabs", "browser_assist"];
+    expect(primitiveTools.every((name) => !registerSurfaceForTest("verbs").has(name))).toBe(true);
+    for (const surface of ["full", "debug", "advanced"] as const) {
+      const tools = registerSurfaceForTest(surface);
+      for (const name of primitiveTools) expect(tools.has(name)).toBe(true);
+      expect(tools.get("browser_inspect")?.parameters.properties).toMatchObject({
+        action: { enum: expect.arrayContaining(["console", "network", "debug"]) },
+      });
+    }
   });
 
   it("registers exactly six public schemas with the complete action contract", () => {

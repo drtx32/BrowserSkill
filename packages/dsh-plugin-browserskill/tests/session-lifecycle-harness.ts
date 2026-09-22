@@ -87,6 +87,7 @@ export function harness(
       thumbnailIntervalMs: 1500,
       idleIntervalMs: 8000,
       lazyTools: false,
+      surface: "full",
     },
   };
   const starts = (deps.starts = new SessionStarts(deps, journal));

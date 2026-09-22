@@ -602,24 +602,23 @@ describe("lazyTools wiring in apply()", () => {
   it("lazyTools: false registers the suite at apply time", () => {
     const { tools } = applyHarness({ lazyTools: false });
     expect([...tools.keys()].sort()).toEqual([
-      "browser_assist",
-      "browser_inspect",
-      "browser_interact",
-      "browser_page",
-      "browser_session",
-      "browser_tabs",
+      "browser_act",
+      "browser_form",
+      "browser_navigate",
+      "browser_read",
+      "browser_recover",
     ]);
   });
 
   it("lazyTools: true hides the suite until the skill fires", () => {
     const { tools, listeners } = applyHarness({ lazyTools: true });
-    expect(tools.has("browser_session")).toBe(false);
+    expect(tools.has("browser_read")).toBe(false);
     callListeners(
       listeners,
       "tools/result",
       { name: "skill", arguments: { name: "browser-skill" } },
       { isError: false },
     );
-    expect(tools.has("browser_session")).toBe(true);
+    expect(tools.has("browser_read")).toBe(true);
   });
 });

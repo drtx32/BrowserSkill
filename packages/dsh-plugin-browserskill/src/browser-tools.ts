@@ -348,7 +348,12 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
   {
     name: "browser_read",
     description: "Read bounded browser state using the existing observation operations.",
-    actions: { observe: "inspect.observe", snapshot: "inspect.snapshot", html: "inspect.html", screenshot: "inspect.screenshot" },
+    actions: {
+      observe: "inspect.observe",
+      snapshot: "inspect.snapshot",
+      html: "inspect.html",
+      screenshot: "inspect.screenshot",
+    },
     parameters: {
       session: SESSION_PARAM,
       tabId: TAB_ID_PARAM,
@@ -363,47 +368,98 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
     name: "browser_act",
     description: "Perform one bounded interaction through the existing target and policy checks.",
     actions: {
-      click: "interact.click", hover: "interact.hover", wheel: "interact.wheel",
-      "scroll-to": "interact.scroll-to", focus: "interact.focus", blur: "interact.blur", press: "interact.press",
+      click: "interact.click",
+      hover: "interact.hover",
+      wheel: "interact.wheel",
+      "scroll-to": "interact.scroll-to",
+      focus: "interact.focus",
+      blur: "interact.blur",
+      press: "interact.press",
     },
     parameters: {
-      session: SESSION_PARAM, tabId: TAB_ID_PARAM, target: TARGET_PARAM,
-      button: { type: "string", enum: ["left", "middle", "right"] }, clickCount: { type: "integer" },
-      captureId: { type: "string" }, imageX: { type: "number" }, imageY: { type: "number" },
-      modifiers: { type: "array", items: { type: "string", enum: ["alt", "ctrl", "meta", "shift"] } },
-      settleMs: { type: "integer" }, deltaX: { type: "number" }, deltaY: { type: "number" },
-      timeoutMs: TIMEOUT_MS_PARAM, key: { type: "string" }, holdMs: { type: "integer" },
+      session: SESSION_PARAM,
+      tabId: TAB_ID_PARAM,
+      target: TARGET_PARAM,
+      button: { type: "string", enum: ["left", "middle", "right"] },
+      clickCount: { type: "integer" },
+      captureId: { type: "string" },
+      imageX: { type: "number" },
+      imageY: { type: "number" },
+      modifiers: {
+        type: "array",
+        items: { type: "string", enum: ["alt", "ctrl", "meta", "shift"] },
+      },
+      settleMs: { type: "integer" },
+      deltaX: { type: "number" },
+      deltaY: { type: "number" },
+      timeoutMs: TIMEOUT_MS_PARAM,
+      key: { type: "string" },
+      holdMs: { type: "integer" },
     },
   },
   {
     name: "browser_form",
-    description: "Apply bounded fill/select input through the existing fail-closed form operations.",
+    description:
+      "Apply bounded fill/select input through the existing fail-closed form operations.",
     actions: { fill: "interact.fill", select: "interact.select" },
     parameters: {
-      session: SESSION_PARAM, tabId: TAB_ID_PARAM, target: TARGET_PARAM,
-      value: { type: "string" }, noClear: { type: "boolean" },
-      values: { type: "array", items: { type: "string" } }, timeoutMs: TIMEOUT_MS_PARAM,
+      session: SESSION_PARAM,
+      tabId: TAB_ID_PARAM,
+      target: TARGET_PARAM,
+      value: { type: "string" },
+      noClear: { type: "boolean" },
+      values: { type: "array", items: { type: "string" } },
+      timeoutMs: TIMEOUT_MS_PARAM,
     },
   },
   {
     name: "browser_navigate",
-    description: "Start or navigate the Agent Window using existing session and navigation semantics.",
-    actions: { start: "session.start", navigate: "page.navigate", back: "page.back", forward: "page.forward", reload: "page.reload", wait: "page.wait" },
+    description:
+      "Start or navigate the Agent Window using existing session and navigation semantics.",
+    actions: {
+      start: "session.start",
+      navigate: "page.navigate",
+      back: "page.back",
+      forward: "page.forward",
+      reload: "page.reload",
+      wait: "page.wait",
+    },
     parameters: {
-      ...SESSION_STOP_PARAMS, session: SESSION_PARAM, tabId: TAB_ID_PARAM,
-      url: { type: "string" }, width: { type: "integer" }, height: { type: "integer" },
-      noFocus: { type: "boolean" }, browser: BROWSER_PARAM, device: { type: "string", enum: DEVICE_PRESETS },
-      waitUntil: WAIT_UNTIL_PARAM, timeoutMs: TIMEOUT_MS_PARAM, hard: { type: "boolean" },
+      ...SESSION_STOP_PARAMS,
+      session: SESSION_PARAM,
+      tabId: TAB_ID_PARAM,
+      url: { type: "string" },
+      width: { type: "integer" },
+      height: { type: "integer" },
+      noFocus: { type: "boolean" },
+      browser: BROWSER_PARAM,
+      device: { type: "string", enum: DEVICE_PRESETS },
+      waitUntil: WAIT_UNTIL_PARAM,
+      timeoutMs: TIMEOUT_MS_PARAM,
+      hard: { type: "boolean" },
     },
   },
   {
     name: "browser_recover",
-    description: "Request explicit human assistance while preserving fail-closed protected-state boundaries.",
+    description:
+      "Request explicit human assistance while preserving fail-closed protected-state boundaries.",
     actions: { "request-help": "assist.request-help" },
     parameters: {
-      session: SESSION_PARAM, tabId: TAB_ID_PARAM, prompt: { type: "string", required: true },
-      title: { type: "string" }, targets: { type: "array", items: { type: "string" } }, timeoutMs: TIMEOUT_MS_PARAM,
-      completionCriteria: { type: "object", additionalProperties: false, properties: { any: { type: "array", items: { type: "object" } }, all: { type: "array", items: { type: "object" } }, stableForMs: { type: "integer" } } },
+      session: SESSION_PARAM,
+      tabId: TAB_ID_PARAM,
+      prompt: { type: "string", required: true },
+      title: { type: "string" },
+      targets: { type: "array", items: { type: "string" } },
+      timeoutMs: TIMEOUT_MS_PARAM,
+      completionCriteria: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          any: { type: "array", items: { type: "object", additionalProperties: false } },
+          all: { type: "array", items: { type: "object", additionalProperties: false } },
+          stableForMs: { type: "integer" },
+        },
+      },
     },
   },
 ];
@@ -417,7 +473,9 @@ function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, Too
     indexed.set(definition.name, definition);
   }
 
-  const routed = new Set([...BROWSER_TOOL_SPECS, ...AGENT_VERB_SPECS].flatMap((spec) => Object.values(spec.actions)));
+  const routed = new Set(
+    [...BROWSER_TOOL_SPECS, ...AGENT_VERB_SPECS].flatMap((spec) => Object.values(spec.actions)),
+  );
   const missing = [...routed].filter((name) => !indexed.has(name));
   const unreachable = [...indexed.keys()].filter((name) => !routed.has(name));
   if (missing.length > 0 || unreachable.length > 0) {
@@ -433,24 +491,42 @@ function indexOperations(definitions: ToolDefinition[]): ReadonlyMap<string, Too
   return indexed;
 }
 
-/** Register the complete six-tool browser suite; returns its combined disposer. */
-export function registerBrowserTools(deps: ToolDeps): () => void {
+export type BrowserSurface = "verbs" | "starter" | "full" | "debug" | "advanced";
+
+function specsForSurface(surface: BrowserSurface): readonly BrowserToolSpec[] {
+  if (surface === "verbs") return AGENT_VERB_SPECS;
+  if (surface === "starter") {
+    return [
+      ...AGENT_VERB_SPECS,
+      ...BROWSER_TOOL_SPECS.filter((spec) =>
+        ["browser_inspect", "browser_interact"].includes(spec.name),
+      ),
+    ];
+  }
+  return [...AGENT_VERB_SPECS, ...BROWSER_TOOL_SPECS];
+}
+
+function registerSpecs(deps: ToolDeps, specs: readonly BrowserToolSpec[]): () => void {
   const definitions = indexOperations(createBrowserOperationDefinitions(deps));
-  const disposers = BROWSER_TOOL_SPECS.map((spec) =>
-    deps.ctx.tools.register(defineBrowserTool(spec, definitions)),
-  ).filter((dispose): dispose is () => void => typeof dispose === "function");
+  const disposers = specs
+    .map((spec) => deps.ctx.tools.register(defineBrowserTool(spec, definitions)))
+    .filter((dispose): dispose is () => void => typeof dispose === "function");
   return () => {
     for (const dispose of disposers.splice(0)) dispose();
   };
 }
 
+/** Register the complete six-tool browser suite for legacy callers. */
+export function registerBrowserTools(deps: ToolDeps): () => void {
+  return registerSpecs(deps, BROWSER_TOOL_SPECS);
+}
+
+/** Register the selected presentation/discovery surface. */
+export function registerSurfaceTools(deps: ToolDeps, surface: BrowserSurface): () => void {
+  return registerSpecs(deps, specsForSurface(surface));
+}
+
 /** Register only the frozen five-verb agent-facing catalog. */
 export function registerAgentVerbTools(deps: ToolDeps): () => void {
-  const definitions = indexOperations(createBrowserOperationDefinitions(deps));
-  const disposers = AGENT_VERB_SPECS.map((spec) =>
-    deps.ctx.tools.register(defineBrowserTool(spec, definitions)),
-  ).filter((dispose): dispose is () => void => typeof dispose === "function");
-  return () => {
-    for (const dispose of disposers.splice(0)) dispose();
-  };
+  return registerSurfaceTools(deps, "verbs");
 }
