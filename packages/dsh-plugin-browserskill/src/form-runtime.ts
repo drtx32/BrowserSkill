@@ -19,6 +19,7 @@ export interface FormField {
   value?: string;
   values?: string[];
   section?: string;
+  tabId?: number;
 }
 
 export interface FormMaterialization {

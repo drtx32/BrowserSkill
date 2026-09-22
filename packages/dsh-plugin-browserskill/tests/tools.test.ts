@@ -1084,6 +1084,68 @@ describe("phase-one support tools", () => {
     );
   });
 
+  it("uses the registered CLI adapter for dynamic targeted re-perception", async () => {
+    const { tools, calls } = setup(
+      {
+        "session start": START_REPLY("s1"),
+        snapshot: seq([
+          { tab_id: 9, revision: 1, fields: [{ target: "@e1" }] },
+          { tab_id: 9, revision: 2, fields: [{ target: "@e1" }, { target: "@e3" }] },
+        ]),
+        fill: { tab_id: 9, value_length: 3, trigger: "dynamic_region_unresolved", revision: 2 },
+        select: { tab_id: 9, selected_values: ["yes"], selected_labels: ["Yes"] },
+      },
+      {},
+      5,
+      "verbs",
+    );
+    await tools.get("browser_navigate")?.execute({ action: "start" }, makeExec());
+    const value = (await tools.get("browser_form")?.execute(
+      {
+        action: "batch",
+        tabId: 9,
+        fields: [
+          { action: "fill", target: "@e1", value: "abc", section: "account" },
+          { action: "select", target: "@e2", values: ["yes"], section: "account" },
+        ],
+      },
+      makeExec(),
+    )) as { receipt: Record<string, unknown> };
+    const snapshotCalls = calls.filter((call) => call.args[0] === "snapshot");
+    expect(snapshotCalls).toHaveLength(2);
+    expect(snapshotCalls[0].args).toEqual(["snapshot", "--session", "s1", "--tab-id", "9"]);
+    expect(snapshotCalls[1].args).toEqual([
+      "snapshot",
+      "--session",
+      "s1",
+      "--trigger",
+      "dynamic_region_unresolved",
+      "--tab-id",
+      "9",
+      "--revision",
+      "2",
+    ]);
+    expect(calls.filter((call) => call.args[0] === "fill")[0].args).toContain("--tab-id");
+    expect(calls.filter((call) => call.args[0] === "select")[0].args).toContain("--tab-id");
+    expect(calls.filter((call) => call.args[0] === "observe")).toHaveLength(0);
+    expect(value.receipt).toEqual({
+      trigger: "dynamic_region_unresolved",
+      succeeded: ["@e1", "@e2"],
+      skipped: [],
+      ambiguous: [],
+      new_required_fields: ["@e3"],
+      revision: 2,
+    });
+    expect(Object.keys(value.receipt)).toEqual([
+      "trigger",
+      "succeeded",
+      "skipped",
+      "ambiguous",
+      "new_required_fields",
+      "revision",
+    ]);
+  });
+
   it("maps request-help targets and structured completion criteria", async () => {
     const { tools, calls } = setup({
       "session start": START_REPLY("s1"),

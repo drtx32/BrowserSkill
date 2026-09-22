@@ -458,6 +458,8 @@ async fn snapshot_returns_text_and_ref_count() {
             tab_id: None,
             max_depth: None,
             max_tokens: None,
+            trigger: None,
+            revision: None,
         },
     )
     .await

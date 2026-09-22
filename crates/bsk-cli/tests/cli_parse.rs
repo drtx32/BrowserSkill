@@ -15,6 +15,29 @@ fn parse(args: &[&str]) -> Cli {
 }
 
 #[test]
+fn parses_snapshot_reperception_metadata() {
+    let cli = parse(&[
+        "bsk",
+        "snapshot",
+        "--session",
+        "s1",
+        "--tab-id",
+        "9",
+        "--trigger",
+        "dynamic_region_unresolved",
+        "--revision",
+        "2",
+    ]);
+    let Command::Snapshot(args) = cli.command else {
+        panic!("expected snapshot command");
+    };
+    assert_eq!(args.session, "s1");
+    assert_eq!(args.tab_id, Some(9));
+    assert_eq!(args.trigger.as_deref(), Some("dynamic_region_unresolved"));
+    assert_eq!(args.revision.as_deref(), Some("2"));
+}
+
+#[test]
 fn parses_unattended_session_without_changing_normal_defaults() {
     for unattended in [false, true] {
         let mut argv = vec!["bsk", "session", "start"];

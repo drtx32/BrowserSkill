@@ -165,7 +165,12 @@ function presentTerminalResult(_args: never, result: ToolResult) {
 }
 
 function formFields(args: Record<string, unknown>): FormField[] {
-  if (Array.isArray(args.fields)) return args.fields as FormField[];
+  const tabId = typeof args.tabId === "number" ? args.tabId : undefined;
+  if (Array.isArray(args.fields))
+    return (args.fields as FormField[]).map((field) => ({
+      ...field,
+      ...(field.tabId === undefined && tabId !== undefined ? { tabId } : {}),
+    }));
   const action = args.action;
   if (action !== "fill" && action !== "select")
     throw new Error("form action must be fill, select, or batch");
@@ -175,6 +180,7 @@ function formFields(args: Record<string, unknown>): FormField[] {
       target: String(args.target ?? ""),
       ...(typeof args.value === "string" ? { value: args.value } : {}),
       ...(Array.isArray(args.values) ? { values: args.values as string[] } : {}),
+      ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}),
     },
   ];
 }
@@ -643,6 +649,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
         },
         action: { type: "string", enum: ["fill", "select", "batch"] },
         target: { type: "string" },
+        tabId: { type: "integer" },
         value: { type: "string" },
         values: { type: "array", items: { type: "string" } },
         fields: {
@@ -656,6 +663,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
               value: { type: "string" },
               values: { type: "array", items: { type: "string" } },
               section: { type: "string" },
+              tabId: { type: "integer" },
             },
           },
         },
@@ -679,7 +687,12 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             await runBsk(
               deps,
               exec,
-              ["snapshot", "--session", sessionId],
+              [
+                "snapshot",
+                "--session",
+                sessionId,
+                ...(typeof args.tabId === "number" ? ["--tab-id", String(args.tabId)] : []),
+              ],
               "form materialize",
               sessionId,
               timeout,
@@ -690,6 +703,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
           materialize,
           mutate: async (field) => {
             const command = [field.action, "--session", sessionId];
+            if (field.tabId !== undefined) command.push("--tab-id", String(field.tabId));
             if (field.action === "fill") command.push("--value", field.value ?? "");
             else for (const value of field.values ?? []) command.push("--value", value);
             command.push(field.target);
@@ -722,7 +736,14 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             };
           },
           rePerceive: async (reason, revision) => {
-            const command = ["snapshot", "--session", sessionId, "--trigger", reason];
+            const command = [
+              "snapshot",
+              "--session",
+              sessionId,
+              "--trigger",
+              reason,
+              ...(typeof args.tabId === "number" ? ["--tab-id", String(args.tabId)] : []),
+            ];
             if (revision !== undefined) command.push("--revision", String(revision));
             return materializationFromReply(
               await runBsk(deps, exec, command, `form re-perceive ${reason}`, sessionId, timeout),

@@ -5,14 +5,14 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use bsk_protocol::Method;
 use bsk_protocol::tools::{SnapshotParams, SnapshotResult};
+use bsk_protocol::Method;
 use clap::Args;
 
-use crate::cli::TOOL_IPC_TIMEOUT;
 use crate::cli::dialogs::print_dialog_summaries;
 use crate::cli::ensure_daemon::ensure_daemon;
 use crate::cli::error::{CliError, Format};
+use crate::cli::TOOL_IPC_TIMEOUT;
 
 #[derive(Debug, Clone, Args)]
 pub struct SnapshotArgs {
@@ -31,6 +31,14 @@ pub struct SnapshotArgs {
     /// Soft cap on rendered tokens (~4 chars/token).
     #[arg(long = "max-tokens")]
     pub max_tokens: Option<u32>,
+
+    /// Frozen form-runtime re-perception trigger, forwarded through snapshot IPC.
+    #[arg(long)]
+    pub trigger: Option<String>,
+
+    /// Materialization revision associated with a re-perception request.
+    #[arg(long)]
+    pub revision: Option<String>,
 }
 
 pub fn dispatch(args: SnapshotArgs, format: Format) -> Result<(), CliError> {
@@ -44,6 +52,8 @@ fn run(sock: PathBuf, args: SnapshotArgs, format: Format) -> Result<(), CliError
         tab_id: args.tab_id,
         max_depth: args.max_depth,
         max_tokens: args.max_tokens,
+        trigger: args.trigger,
+        revision: args.revision,
     };
     let reply: SnapshotResult = call(sock, params)?;
     match format {

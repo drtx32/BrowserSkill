@@ -417,6 +417,8 @@ export interface SnapshotParams {
   tab_id?: number;
   max_depth?: number;
   max_tokens?: number;
+  trigger?: string;
+  revision?: string | number;
 }
 
 export interface SnapshotResult {

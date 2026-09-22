@@ -421,6 +421,7 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
             value: { type: "string" },
             values: { type: "array", items: { type: "string" } },
             section: { type: "string" },
+            tabId: { type: "integer" },
           },
         },
       },
