@@ -64,6 +64,16 @@ describe("ShadowEvidenceAdapter", () => {
     expect(conflict.added).toEqual([]);
   });
 
+  it("rejects duplicate canonical target ids while keeping stable refs as projections", () => {
+    const adapter = new ShadowEvidenceAdapter();
+    const delta = adapter.applySnapshot("page-1", [
+      { id: "a", target_id: "page:save", stable_ref: "@e1" },
+      { id: "b", target_id: "page:save", stable_ref: "@e2" },
+    ]);
+    expect(delta.fallback_reason).toBe("conflicting_target_id");
+    expect(delta.completeness).toBe("full_refresh_required");
+  });
+
   it("marks mutation events without a region as ambiguous", () => {
     const adapter = new ShadowEvidenceAdapter();
     adapter.capture({ page_instance_id: "page-1", kind: "mutation", source: "dom", payload: { text: "changed" } });

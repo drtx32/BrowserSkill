@@ -62,6 +62,8 @@ export interface EvidenceAdapterOptions {
 
 export interface SemanticRecord {
   id: string;
+  /** Page-scoped canonical identity; stable_ref remains a binding/projection. */
+  target_id?: string;
   region_id?: string | null;
   stable_ref?: string | null;
   [key: string]: unknown;
@@ -208,6 +210,11 @@ export class ShadowEvidenceAdapter {
     const refs = new Map<string, string>();
     for (const record of records) {
       if (!record.id || next.has(record.id)) reason ??= "ambiguous_record_identity";
+      if (record.target_id) {
+        const owner = refs.get(`target_id:${record.target_id}`);
+        if (owner && owner !== record.id) reason ??= "conflicting_target_id";
+        refs.set(`target_id:${record.target_id}`, record.id);
+      }
       if (record.stable_ref) {
         const owner = refs.get(record.stable_ref);
         if (owner && owner !== record.id) reason ??= "conflicting_stable_ref";
