@@ -49,6 +49,8 @@ pub enum SessionSub {
     List,
     /// Show the bounded, redacted history for a live logical session.
     History(SessionHistoryArgs),
+    /// Inspect, claim, prepare, or cancel a recoverable start request.
+    Request(SessionRequestArgs),
 }
 
 #[derive(Debug, Clone, Args)]
@@ -59,8 +61,6 @@ pub struct SessionHistoryArgs {
     /// Maximum number of recent events to return (1..=50).
     #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(1..=50))]
     pub limit: u32,
-    /// Inspect, claim, or cancel a recoverable start request.
-    Request(SessionRequestArgs),
 }
 
 #[derive(Debug, Clone, Args)]
