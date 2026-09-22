@@ -115,6 +115,16 @@ export function runTaskUi<T>(
   });
 }
 
+/** Cancel transient UI work when transport ownership changes, without stopping
+ * the local session that must survive a reconnect. Already-issued browser
+ * calls may settle later; their continuations observe the aborted operation.
+ */
+export function cancelUiActivity(task: SessionContext): void {
+  const state = activities.get(task);
+  if (!state) return;
+  for (const op of state.operations) op.abort();
+}
+
 /** Used at the actual return boundary, including automatic return and rollback.
  * Never wait for unbounded image/CDP work. Late work is invalidated first. */
 export async function withUiTeardown<T>(

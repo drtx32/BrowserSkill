@@ -213,9 +213,11 @@ it.each([
   await vi.advanceTimersByTimeAsync(3000);
   expect(entered).toBe(true);
   await failed;
-  const cleanup = createDisconnectCleanup({ manager: f.manager, sessionStopDeps: f.stopDeps })();
+  const cleanup = createDisconnectCleanup({ manager: f.manager })();
   await vi.advanceTimersByTimeAsync(5000);
-  expect(await cleanup).toMatchObject({ stoppedSessionIds: ["one", "two"], failures: [] });
+  expect(await cleanup).toMatchObject({ preservedSessionIds: ["one", "two"], failures: [] });
+  expect(f.manager.has("one")).toBe(true);
+  expect(f.manager.has("two")).toBe(true);
   const values: Record<string, unknown> = {
     query: [{ id: 5, windowId: 10, active: true }],
     get: { id: 5, windowId: 10 },
@@ -226,8 +228,12 @@ it.each([
   };
   gate.resolve(values[stage]);
   await vi.advanceTimersByTimeAsync(0);
-  expect(f.attached.size).toBe(0);
-  expect(f.focus.get(5)).not.toBe(true);
+  // Disconnect preserves the session's browser claim for reconnect. Stages
+  // before acquisition never create that claim; later stages retain it after
+  // their already-issued Chrome work settles.
+  const acquired = !["query", "get"].includes(stage);
+  expect(f.attached.size).toBe(acquired ? 1 : 0);
+  expect(f.focus.get(5)).toBe(acquired ? true : undefined);
   if (stage === "decode") expect(f.bitmap.close).toHaveBeenCalled();
 });
 

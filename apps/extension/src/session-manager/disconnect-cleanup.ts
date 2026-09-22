@@ -1,4 +1,5 @@
 import type { SessionManager } from "./manager";
+import { cancelUiActivity } from "./ui-activity";
 
 export interface DisconnectCleanupFailure {
   sessionId: string;
@@ -37,6 +38,8 @@ async function cleanupSessions(
   options: DisconnectCleanupOptions,
 ): Promise<DisconnectCleanupReport> {
   const preservedSessionIds = options.manager.list().map((ctx) => ctx.sessionId);
+
+  for (const ctx of options.manager.list()) cancelUiActivity(ctx);
 
   options.onSessionsChanged?.();
   return { preservedSessionIds, failures: [] };

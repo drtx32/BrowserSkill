@@ -140,19 +140,18 @@ it("disconnect cleanup finishes despite an unsettled focus mutation", async () =
   const focusing = focusTask(f.manager, "one");
   const cancelled = expect(focusing).rejects.toMatchObject({ code: "cancelled" });
   await vi.advanceTimersByTimeAsync(0);
-  const clean = createDisconnectCleanup({ manager: f.manager, sessionStopDeps: f.stopDeps });
+  const clean = createDisconnectCleanup({ manager: f.manager });
   const cleanup = clean();
   await vi.advanceTimersByTimeAsync(1000);
-  expect(await cleanup).toMatchObject({ stoppedSessionIds: ["one"], failures: [] });
-  expect(f.manager.has("one")).toBe(false);
-  expect(f.task.borrowedTabs.has(5)).toBe(false);
-  expect(f.tabApi.move).toHaveBeenCalled();
+  expect(await cleanup).toMatchObject({ preservedSessionIds: ["one"], failures: [] });
+  expect(f.manager.has("one")).toBe(true);
+  expect(f.task.borrowedTabs.has(5)).toBe(true);
   gate.resolve({ id: 5, windowId: 10 } as chrome.tabs.Tab);
   await cancelled;
   await vi.advanceTimersByTimeAsync(30000);
-  expect(f.manager.has("one")).toBe(false);
-  expect(f.tabApi.move).toHaveBeenCalled();
-  expect(await clean()).toMatchObject({ stoppedSessionIds: [], failures: [] });
+  expect(f.manager.has("one")).toBe(true);
+  expect(f.tabApi.move).not.toHaveBeenCalled();
+  expect(await clean()).toMatchObject({ preservedSessionIds: ["one"], failures: [] });
 });
 
 it("releases a moved tab even when the deadline expires during authority recheck", async () => {
@@ -191,7 +190,7 @@ it("reconnects after bounded cleanup without waiting for focus completion or a w
   const focusing = focusTask(f.manager, "one");
   const cancelled = expect(focusing).rejects.toMatchObject({ code: "cancelled" });
   await vi.advanceTimersByTimeAsync(0);
-  const clean = createDisconnectCleanup({ manager: f.manager, sessionStopDeps: f.stopDeps });
+  const clean = createDisconnectCleanup({ manager: f.manager });
   const cleanup = vi.fn(async () => {
     const result = await clean();
     if (result.failures.length) throw new Error("Session cleanup incomplete");
@@ -213,7 +212,7 @@ it("reconnects after bounded cleanup without waiting for focus completion or a w
   await vi.advanceTimersByTimeAsync(1000);
   await transition;
   expect(controller.snapshot().lastError).toBeNull();
-  expect(f.manager.has("one")).toBe(false);
+  expect(f.manager.has("one")).toBe(true);
   expect(transport.connect).toHaveBeenCalledTimes(2);
   gate.resolve({ id: 5, windowId: 10 } as chrome.tabs.Tab);
   await cancelled;
