@@ -35,6 +35,7 @@ export interface RegisteredObservation {
   /** Optional current Wiki projection supplied by the canonical binding path. */
   semanticTargets?: readonly SemanticTarget[];
   semanticBindings?: readonly SemanticBinding[];
+  recordingScope?: { browser_id: string; session_id: string; tab_id: number };
 }
 
 /** Live-ref projection owned by CanonicalPerception, never an identity source. */

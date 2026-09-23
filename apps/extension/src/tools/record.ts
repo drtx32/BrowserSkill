@@ -18,6 +18,7 @@ import {
   type RecordStepAck,
   type RecordStopMessage,
 } from "@/lib/record-bridge";
+import { defaultCanonicalRecordingTargetProvider } from "@/lib/recording/default-canonical-perception";
 import {
   type RecordFrameCoordinator,
   type RecordingCaptureScope,
@@ -307,6 +308,7 @@ function getDefaultDeps(): RecordDeps {
       tabsApi: chromeTabsApi,
       sendToTab: (tabId, msg) => chrome.tabs.sendMessage(tabId, msg),
       frameCoordinator: recordFrameCoordinator,
+      semanticTargetProvider: defaultCanonicalRecordingTargetProvider,
     };
   }
   return defaultDeps;
@@ -916,7 +918,12 @@ export async function handleRecordStart(
             maxTokens: maxPageTokens,
             redactValues,
             isTabAllowed: ctx.remote ? isTabAllowed : undefined,
-            semanticTargetProvider: deps.semanticTargetProvider,
+            semanticTargetProvider:
+              deps.semanticTargetProvider ?? defaultCanonicalRecordingTargetProvider,
+            recordingScope: {
+              browser_id: `window:${ctx.agentWindowId}`,
+              session_id: params.session_id,
+            },
           })
         : null,
     stoppedBy: "user_finish",

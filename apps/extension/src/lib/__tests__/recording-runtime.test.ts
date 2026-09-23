@@ -14,6 +14,11 @@ vi.mock("../recording/document-settle", async (importOriginal) => {
   return { ...actual, waitForDocumentSettled };
 });
 
+import type { WikiScope } from "@/tools/wiki/guarded-maintenance";
+import {
+  defaultCanonicalRecordingTargetProvider,
+  recordingCanonicalPerception,
+} from "../recording/default-canonical-perception";
 import { ObservationNodeIndex } from "../recording/observation-capture";
 import { RecordingObservationSession } from "../recording/observation-session";
 import { RecordingObservationRuntime } from "../recording/recording-runtime";
@@ -96,6 +101,48 @@ describe("RecordingObservationRuntime", () => {
       target_id: "wiki:save",
       stable_ref: "@e9",
     });
+  });
+
+  it("uses the shared default canonical projection across live-ref renumbering", async () => {
+    const scope: WikiScope = {
+      browser_id: "browser-extension",
+      session_id: "recording",
+      tab_id: 7,
+      document_id: "doc-1",
+      origin: "https://example.com",
+    };
+    recordingCanonicalPerception.applyFullObservation(scope, { ownership_id: "recording-test" }, [
+      {
+        target_id: "wiki:save",
+        stable_ref: "@e9",
+        address: {
+          origin: scope.origin,
+          document: scope.document_id,
+          role: "button",
+          name: "Save",
+        },
+      },
+    ]);
+    captureRecordingObservation
+      .mockResolvedValueOnce({ ...observation("https://example.com/wiki"), documentId: "doc-1" })
+      .mockResolvedValueOnce({ ...observation("https://example.com/wiki"), documentId: "doc-1" });
+    const session = new RecordingObservationSession({
+      semanticTargetProvider: defaultCanonicalRecordingTargetProvider,
+      recordingScope: scope,
+    });
+    const first = await session.capture(
+      { send: vi.fn() as unknown as CdpRunner["send"] },
+      { get: vi.fn(), query: vi.fn() } as unknown as ChromeTabsApi,
+      7,
+    );
+    const second = await session.capture(
+      { send: vi.fn() as unknown as CdpRunner["send"] },
+      { get: vi.fn(), query: vi.fn() } as unknown as ChromeTabsApi,
+      7,
+    );
+    expect(first.semanticTargets?.[0]?.target_id).toBe("wiki:save");
+    expect(second.semanticTargets?.[0]?.target_id).toBe("wiki:save");
+    expect(second.semanticBindings?.[0]?.stable_ref).toBe("@e9");
   });
 
   it("cancels an in-flight initial capture", async () => {

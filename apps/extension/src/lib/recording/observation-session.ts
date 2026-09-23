@@ -45,6 +45,7 @@ export class RecordingObservationSession {
   readonly #maxTokens: number;
   readonly #redactValues: boolean;
   readonly #semanticTargetProvider?: CanonicalRecordingTargetProvider;
+  readonly #recordingScope?: { browser_id: string; session_id: string; tab_id: number };
 
   constructor(
     options: {
@@ -54,6 +55,7 @@ export class RecordingObservationSession {
       maxTokens?: number;
       redactValues?: boolean;
       semanticTargetProvider?: CanonicalRecordingTargetProvider;
+      recordingScope?: { browser_id: string; session_id: string; tab_id: number };
     } = {},
   ) {
     this.registry = options.registry ?? new RecordingStateRegistry();
@@ -62,6 +64,7 @@ export class RecordingObservationSession {
     this.#maxTokens = options.maxTokens ?? DEFAULT_MAX_PAGE_TOKENS;
     this.#redactValues = options.redactValues ?? false;
     this.#semanticTargetProvider = options.semanticTargetProvider;
+    this.#recordingScope = options.recordingScope;
   }
 
   async capture(
@@ -95,6 +98,7 @@ export class RecordingObservationSession {
       revision: state.revision,
       index: captured.index,
       url: captured.url,
+      ...(this.#recordingScope ? { recordingScope: this.#recordingScope } : {}),
     };
     const projection = this.#semanticTargetProvider?.(observation);
     if (projection) {
