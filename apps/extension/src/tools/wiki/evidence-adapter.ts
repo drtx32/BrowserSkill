@@ -254,6 +254,25 @@ export class ShadowEvidenceAdapter {
     return delta;
   }
 
+  /**
+   * Return the last accepted semantic projection. This is deliberately a
+   * passive read; callers must not use it to trigger reconciliation.
+   */
+  snapshotRecords(pageInstanceId: string): readonly SemanticRecord[] {
+    return [...(this.snapshots.get(pageInstanceId)?.values() ?? [])].map((record) => ({ ...record }));
+  }
+
+  /** Apply only one dirty region while retaining the rest of the accepted projection. */
+  applyTargetedSnapshot(
+    pageInstanceId: string,
+    regionId: string,
+    records: readonly SemanticRecord[],
+    fromRevision = 0,
+  ): SemanticDelta {
+    const retained = this.snapshotRecords(pageInstanceId).filter((record) => record.region_id !== regionId);
+    return this.applySnapshot(pageInstanceId, [...retained, ...records], fromRevision);
+  }
+
   /** Navigation creates a new identity; old snapshots must not be reused. */
   invalidate(pageInstanceId: string, reason = "navigation"): void {
     this.snapshots.delete(pageInstanceId);
