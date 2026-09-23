@@ -10,6 +10,8 @@ on:
   push:
     branches:
       - main
+      - bsk-fix
+      - 'agent/**'
 
 permissions:
   contents: read
@@ -225,3 +227,67 @@ jobs:
 
       - name: Run script tests
         run: node --test scripts/*.test.mjs
+
+  architecture-regressions:
+    name: Architecture exact-head regression gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare extension types
+        run: pnpm --filter @browser-skill/extension exec wxt prepare
+
+      - name: Run canonical identity and incremental perception gates
+        run: >-
+          pnpm --filter @browser-skill/extension exec vitest run
+          src/tools/wiki/semantic-address.test.ts
+          src/tools/wiki/canonical-perception.test.ts
+          src/tools/wiki/guarded-maintenance.test.ts
+          src/tools/vom/__tests__/document-identity.test.ts
+          src/tools/vom/__tests__/capture-coordinator.test.ts
+          src/tools/__tests__/observation.test.ts
+
+      - name: Run record and replay compatibility gates
+        run: >-
+          pnpm --filter @browser-skill/extension exec vitest run
+          src/lib/__tests__/trace-reducer-v3.test.ts
+          src/lib/__tests__/trace-reducer-v2.test.ts
+          src/lib/__tests__/recording-runtime.test.ts
+          src/lib/__tests__/recording-document-marker.test.ts
+          src/content/__tests__/record-capture.test.ts
+          src/debug/__tests__/network-control.test.ts
+
+      - name: Run production batch form and progressive surface gates
+        run: >-
+          pnpm --filter @wxg-prc-cpg/browser-skill-dsh-plugin run build:skill &&
+          pnpm --filter @wxg-prc-cpg/browser-skill-dsh-plugin exec vitest run
+          tests/tools.test.ts
+          tests/lazy-tools.test.ts
+          tests/lazy-tools.integration.test.ts
+
+      - name: Run offline eval and Wiki health validators
+        run: |
+          pnpm eval:browser:check
+          pnpm eval:wiki-health
+
+      - name: Upload architecture regression artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: architecture-regression-${{ github.sha }}
+          path: |
+            evals/browser/results/
+            evals/wiki-health/
+          if-no-files-found: ignore
