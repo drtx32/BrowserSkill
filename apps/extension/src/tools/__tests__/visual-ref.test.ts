@@ -193,7 +193,11 @@ describe("typed visual refs", () => {
       },
     );
     expect(result).toMatchObject({ resolved_targets: [{ ref: "@e1", matched: false }] });
-    expect(send).not.toHaveBeenCalled();
-    expect(sendToTab.mock.calls[0][1]).toMatchObject({ rects: [], selectors: [] });
+    // The bsk-fix human-help checkpoint legitimately performs DOM/AX/indicator
+    // reads through cdp. The visual-ref path must still avoid scrolling or
+    // highlighting the visual anchor itself.
+    expect(sendToTab).toHaveBeenCalled();
+    for (const [, message] of sendToTab.mock.calls)
+      expect(message).toMatchObject({ rects: [], selectors: [] });
   });
 });
