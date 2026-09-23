@@ -44,6 +44,7 @@ import {
   defaultBorrowChromeWindows,
   requestBorrowConfirmation,
 } from "@/tools/borrow-confirmation";
+import { chromeBrowserNavigationApi } from "@/tools/browser-navigation";
 import { ToolDispatcher } from "@/tools/dispatcher";
 import {
   attachRecordFinishListener,
@@ -295,6 +296,7 @@ export default defineBackground(() => {
   const recordDeps = {
     tabsApi: chrome.tabs,
     cdp,
+    browserNavigation: chromeBrowserNavigationApi,
     frameCoordinator: recordFrameCoordinator,
     sendToTab: (tabId: number, msg: Parameters<typeof chrome.tabs.sendMessage>[1]) =>
       chrome.tabs.sendMessage(tabId, msg),

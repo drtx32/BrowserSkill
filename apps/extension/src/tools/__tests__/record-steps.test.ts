@@ -276,6 +276,9 @@ describe("recorded user steps reach the exported trace", () => {
     const manager = fakeManager();
     const cdp = makeFakeCdp();
     const tabsApi = makeTabsApi();
+    const browserNavigation = {
+      getFrame: vi.fn(async () => ({ documentId: "document-1" })),
+    };
 
     let requestId = "";
     const sendToTab = vi.fn(async (_tabId: number, msg: unknown) => {
@@ -284,7 +287,7 @@ describe("recorded user steps reach the exported trace", () => {
       return { ok: true };
     });
 
-    const startDeps = { tabsApi, sendToTab, cdp };
+    const startDeps = { tabsApi, sendToTab, cdp, browserNavigation };
     const started = await handleRecordStart(manager, RECORD_START_V3, startDeps);
     expect(started).toEqual({ tab_id: TAB_ID, recording: true });
     expect(requestId).not.toBe("");
@@ -323,6 +326,12 @@ describe("recorded user steps reach the exported trace", () => {
     expect(step?.state).toBeTruthy();
     expect(step?.result.state).toBeTruthy();
     expect(trace.states.length).toBeGreaterThan(0);
+    expect(browserNavigation.getFrame).toHaveBeenCalled();
+    expect(trace.metrics).toMatchObject({
+      state_count: trace.states.length,
+      full_observe_equivalents: expect.any(Number),
+    });
+    expect(trace.states[0]).toMatchObject({ document_id: "document-1", revision: 1 });
   });
 
   it("keeps a fill followed by a click in recorded order", async () => {

@@ -630,7 +630,8 @@ mod tests {
     use bsk_protocol::tools::{
         NavigationCause, PageRefV2 as PageRef, RecorderInfo, StepCommonV3 as StepCommon,
         StepResultV3 as StepResult, StepV3 as Step, StopReason, TRACE_VERSION_V2, TRACE_VERSION_V3,
-        TraceEntry, TraceMetricsV3, TraceStateV3, TraceV2, TraceV3, VOM_FORMAT_VERSION,
+        RecordStopResult, TraceEntry, TraceMetricsV3, TraceStateV3, TraceV2, TraceV3,
+        VOM_FORMAT_VERSION,
     };
 
     fn sample_trace(state_id: &str, body: &str) -> TraceV3 {
@@ -712,6 +713,29 @@ mod tests {
             fs::read_to_string(states_dir.join("reference.txt")).unwrap(),
             "user file"
         );
+    }
+
+    #[test]
+    fn record_stop_wire_payload_preserves_v3_fields_on_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("flow");
+        let trace = sample_trace("s1", "@vom 1\nbutton Save");
+        let wire = serde_json::to_value(RecordStopResult {
+            trace: bsk_protocol::tools::RecordedTrace::V3(trace),
+        })
+        .unwrap();
+        let decoded: RecordStopResult = serde_json::from_value(wire).unwrap();
+        let trace = match decoded.trace {
+            bsk_protocol::tools::RecordedTrace::V3(trace) => trace,
+            bsk_protocol::tools::RecordedTrace::V2(_) => panic!("expected v3 trace"),
+        };
+
+        write_trace_bundle(&output, &trace).unwrap();
+        let disk: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(output.join("trace.json")).unwrap()).unwrap();
+        assert_eq!(disk["metrics"]["full_observe_equivalents"], 1);
+        assert_eq!(disk["states"][0]["document_id"], "doc-1");
+        assert_eq!(disk["states"][0]["revision"], 2);
     }
 
     #[test]
