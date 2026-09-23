@@ -96,12 +96,14 @@ fn sample_trace() -> TraceV3 {
             bsk: "0.1.10".into(),
             vom: VOM_FORMAT_VERSION,
         },
+        metrics: None,
         states: vec![TraceStateV3 {
             id: "s1".into(),
             url: "https://example.com/".into(),
             title: Some("Example".into()),
             body: "@vom 1\nL1 page".into(),
             truncated: false,
+            ..Default::default()
         }],
         steps: vec![],
     }

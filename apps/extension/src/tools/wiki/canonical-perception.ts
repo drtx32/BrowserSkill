@@ -182,6 +182,7 @@ export class CanonicalPerception {
   }
 
   rollover(scope: WikiScope, reason = "document_or_origin_rollover"): void {
+    const previousDocumentId = this.scope?.document_id;
     if (this.scope) {
       for (const record of this.current.values()) {
         record.status = "invalidated";
@@ -192,7 +193,7 @@ export class CanonicalPerception {
       }
     }
     this.current.clear();
-    this.wiki.invalidate(scope.document_id, reason);
+    if (previousDocumentId) this.wiki.invalidate(previousDocumentId, reason);
     this.scope = clone(scope);
     this.ownership = null;
     this.active = false;
@@ -206,6 +207,40 @@ export class CanonicalPerception {
   currentTargets(scope: WikiScope): readonly TargetRecord[] {
     if (!this.active || !this.scope || !sameScope(this.scope, scope)) return [];
     return clone([...this.current.values()].filter((target) => target.status === "current"));
+  }
+
+  /** Materialize one bounded recording checkpoint through the canonical delta path. */
+  materializeRecordingObservation(
+    scope: WikiScope,
+    ownership: OwnershipGuard,
+    inputs: readonly CanonicalTargetInput[],
+    fromRevision: number,
+  ): PerceptionReceipt {
+    if (
+      this.active &&
+      this.scope &&
+      sameScope(this.scope, scope) &&
+      this.ownership?.ownership_id === ownership.ownership_id
+    ) {
+      return this.applyTargetedRegion(
+        scope,
+        ownership,
+        "recording-observation",
+        inputs,
+        fromRevision,
+      );
+    }
+    return this.applyFullObservation(scope, ownership, inputs, fromRevision);
+  }
+
+  /** Drop live and historical recording authority when its session ends. */
+  releaseSession(sessionId: string): void {
+    if (this.scope?.session_id !== sessionId) return;
+    this.current.clear();
+    this.history.clear();
+    this.active = false;
+    this.ownership = null;
+    this.scope = null;
   }
 
   private commit(

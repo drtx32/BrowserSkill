@@ -449,6 +449,16 @@ struct BundleState<'a> {
     page: String,
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    document_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    revision: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    base_state: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    delta: Option<&'a bsk_protocol::tools::TraceDeltaV3>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    full_refresh_required: bool,
 }
 
 #[derive(Serialize)]
@@ -462,6 +472,8 @@ struct BundleTrace<'a> {
     stopped_by: &'a bsk_protocol::tools::StopReason,
     entry: &'a bsk_protocol::tools::TraceEntry,
     recorder: &'a bsk_protocol::tools::RecorderInfo,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    metrics: Option<&'a bsk_protocol::tools::TraceMetricsV3>,
     states: Vec<BundleState<'a>>,
     steps: &'a [bsk_protocol::tools::StepV3],
 }
@@ -515,6 +527,11 @@ pub(super) fn write_trace_bundle(output_dir: &Path, trace: &TraceV3) -> Result<P
             title: state.title.as_deref(),
             page: filename,
             truncated: state.truncated,
+            document_id: state.document_id.as_deref(),
+            revision: state.revision,
+            base_state: state.base_state.as_deref(),
+            delta: state.delta.as_ref(),
+            full_refresh_required: state.full_refresh_required,
         });
     }
 
@@ -526,6 +543,7 @@ pub(super) fn write_trace_bundle(output_dir: &Path, trace: &TraceV3) -> Result<P
         stopped_by: &trace.stopped_by,
         entry: &trace.entry,
         recorder: &trace.recorder,
+        metrics: trace.metrics.as_ref(),
         states: disk_states,
         steps: &trace.steps,
     };
@@ -612,7 +630,7 @@ mod tests {
     use bsk_protocol::tools::{
         NavigationCause, PageRefV2 as PageRef, RecorderInfo, StepCommonV3 as StepCommon,
         StepResultV3 as StepResult, StepV3 as Step, StopReason, TRACE_VERSION_V2, TRACE_VERSION_V3,
-        TraceEntry, TraceStateV3, TraceV2, TraceV3, VOM_FORMAT_VERSION,
+        TraceEntry, TraceMetricsV3, TraceStateV3, TraceV2, TraceV3, VOM_FORMAT_VERSION,
     };
 
     fn sample_trace(state_id: &str, body: &str) -> TraceV3 {
@@ -627,12 +645,21 @@ mod tests {
                 bsk: "0.1.10".into(),
                 vom: VOM_FORMAT_VERSION,
             },
+            metrics: Some(TraceMetricsV3 {
+                state_count: 1,
+                full_state_count: 1,
+                delta_state_count: 0,
+                full_observe_equivalents: 1,
+            }),
             states: vec![TraceStateV3 {
                 id: state_id.into(),
                 url: "https://example.com/".into(),
                 title: Some("Example".into()),
                 body: body.into(),
                 truncated: false,
+                document_id: Some("doc-1".into()),
+                revision: Some(2),
+                ..Default::default()
             }],
             steps: vec![Step::Navigate {
                 common: StepCommon {
@@ -663,6 +690,9 @@ mod tests {
         let disk: serde_json::Value =
             serde_json::from_str(&fs::read_to_string(&trace_path).unwrap()).unwrap();
         assert_eq!(disk["states"][0]["page"], "s1.txt");
+        assert_eq!(disk["states"][0]["document_id"], "doc-1");
+        assert_eq!(disk["states"][0]["revision"], 2);
+        assert_eq!(disk["metrics"]["full_observe_equivalents"], 1);
         assert!(disk["states"][0].get("body").is_none());
         assert_eq!(
             fs::read_to_string(states_dir.join("s1.txt")).unwrap(),

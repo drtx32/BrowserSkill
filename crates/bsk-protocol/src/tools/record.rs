@@ -12,7 +12,8 @@ pub use super::record_v2::{
 };
 pub use super::record_v3::{
     FillCommit, NavigationCause, RecorderInfo, SelectedOptionV3, StepCommonV3, StepResultV3,
-    StepV3, StopReason, TRACE_VERSION_V3, TargetDescriptorV3, TraceStateV3, TraceV3,
+    StepV3, StopReason, TRACE_VERSION_V3, TargetDescriptorV3, TraceDeltaV3, TraceMetricsV3,
+    TraceStateV3, TraceV3,
     VOM_FORMAT_VERSION,
 };
 
@@ -294,6 +295,7 @@ mod tests {
             name: Some("发布".into()),
             ctx: Some("金桔柠檬 6 号".into()),
             unmatched: false,
+            ..Default::default()
         }
     }
 
@@ -311,6 +313,7 @@ mod tests {
                 bsk: "0.1.10".into(),
                 vom: VOM_FORMAT_VERSION,
             },
+            metrics: None,
             states: vec![
                 TraceStateV3 {
                     id: "s1".into(),
@@ -318,6 +321,7 @@ mod tests {
                     title: Some("Example Domain".into()),
                     body: "@vom 1\nRootWebArea \"Example Domain\"".into(),
                     truncated: false,
+                    ..Default::default()
                 },
                 TraceStateV3 {
                     id: "s2".into(),
@@ -325,6 +329,7 @@ mod tests {
                     title: Some("商品管理".into()),
                     body: "@vom 1\nRootWebArea \"商品管理\"".into(),
                     truncated: false,
+                    ..Default::default()
                 },
             ],
             steps: vec![
@@ -341,6 +346,7 @@ mod tests {
                         name: Some("搜索商品".into()),
                         ctx: None,
                         unmatched: false,
+                        ..Default::default()
                     },
                     value: "金桔柠檬".into(),
                     commit: FillCommit::Enter,
@@ -379,6 +385,7 @@ mod tests {
                 name: Some("搜索商品".into()),
                 ctx: None,
                 unmatched: false,
+                ..Default::default()
             },
             value: "browser skill".into(),
             commit: FillCommit::Enter,
@@ -402,6 +409,7 @@ mod tests {
                 name: Some("密码".into()),
                 ctx: None,
                 unmatched: false,
+                ..Default::default()
             },
             value: "***".into(),
             commit: FillCommit::Blur,
@@ -461,6 +469,7 @@ mod tests {
                 name: Some("OK".into()),
                 ctx: None,
                 unmatched: false,
+                ..Default::default()
             },
         };
         let v = serde_json::to_value(&step).unwrap();
@@ -513,6 +522,7 @@ mod tests {
                 name: Some("发布".into()),
                 ctx: None,
                 unmatched: true,
+                ..Default::default()
             },
         };
         let v = serde_json::to_value(&step).unwrap();

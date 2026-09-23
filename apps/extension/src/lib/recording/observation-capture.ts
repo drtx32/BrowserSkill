@@ -116,8 +116,9 @@ export class ObservationNodeIndex {
     return this.#refById.get(refId);
   }
 
-  refs(frameId: string): readonly RenderedRef[] {
-    return this.#refsByFrame.get(frameId) ?? [];
+  refs(frameId?: string): readonly RenderedRef[] {
+    if (frameId !== undefined) return this.#refsByFrame.get(frameId) ?? [];
+    return [...this.#refsByFrame.values()].flat();
   }
 
   documentScope(producerId: string): RecordingDocumentScope | undefined {

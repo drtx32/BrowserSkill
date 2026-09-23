@@ -34,7 +34,7 @@ fn trace_v3_version_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars
 }
 
 /// Stable semantic handle for an interacted element within a page observation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
 pub struct TargetDescriptorV3 {
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "ref")]
     pub element_ref: Option<String>,
@@ -46,6 +46,16 @@ pub struct TargetDescriptorV3 {
     pub ctx: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub unmatched: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_query: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_address: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unmatched_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -62,7 +72,7 @@ pub enum StopReason {
 }
 
 /// Page observation dictionary entry — referenced by steps via `state` / `result.state`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Default)]
 pub struct TraceStateV3 {
     pub id: String,
     pub url: String,
@@ -72,6 +82,32 @@ pub struct TraceStateV3 {
     pub body: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub truncated: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub document_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delta: Option<TraceDeltaV3>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub full_refresh_required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TraceDeltaV3 {
+    pub added: Vec<String>,
+    pub removed: Vec<String>,
+    pub complete: bool,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct TraceMetricsV3 {
+    pub state_count: u32,
+    pub full_state_count: u32,
+    pub delta_state_count: u32,
+    pub full_observe_equivalents: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -186,6 +222,8 @@ pub struct TraceV3 {
     pub stopped_by: StopReason,
     pub entry: TraceEntry,
     pub recorder: RecorderInfo,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<TraceMetricsV3>,
     pub states: Vec<TraceStateV3>,
     pub steps: Vec<StepV3>,
 }
@@ -212,6 +250,11 @@ mod tests {
             name: Some("发布".into()),
             ctx: Some("金桔柠檬 6 号".into()),
             unmatched: false,
+            semantic: None,
+            semantic_query: None,
+            semantic_address: None,
+            binding: None,
+            unmatched_reason: None,
         }
     }
 
@@ -229,6 +272,7 @@ mod tests {
                 bsk: "0.1.10".into(),
                 vom: VOM_FORMAT_VERSION,
             },
+            metrics: None,
             states: vec![
                 TraceStateV3 {
                     id: "s1".into(),
@@ -236,6 +280,11 @@ mod tests {
                     title: Some("Example Domain".into()),
                     body: "@vom 1\nRootWebArea \"Example Domain\"".into(),
                     truncated: false,
+                    document_id: None,
+                    revision: None,
+                    base_state: None,
+                    delta: None,
+                    full_refresh_required: false,
                 },
                 TraceStateV3 {
                     id: "s2".into(),
@@ -243,6 +292,11 @@ mod tests {
                     title: Some("商品管理".into()),
                     body: "@vom 1\nRootWebArea \"商品管理\"".into(),
                     truncated: false,
+                    document_id: None,
+                    revision: None,
+                    base_state: None,
+                    delta: None,
+                    full_refresh_required: false,
                 },
             ],
             steps: vec![
@@ -259,6 +313,11 @@ mod tests {
                         name: Some("搜索商品".into()),
                         ctx: None,
                         unmatched: false,
+                        semantic: None,
+                        semantic_query: None,
+                        semantic_address: None,
+                        binding: None,
+                        unmatched_reason: None,
                     },
                     value: "金桔柠檬".into(),
                     commit: FillCommit::Enter,
@@ -297,6 +356,11 @@ mod tests {
                 name: Some("搜索商品".into()),
                 ctx: None,
                 unmatched: false,
+                semantic: None,
+                semantic_query: None,
+                semantic_address: None,
+                binding: None,
+                unmatched_reason: None,
             },
             value: "browser skill".into(),
             commit: FillCommit::Enter,
@@ -320,6 +384,11 @@ mod tests {
                 name: Some("密码".into()),
                 ctx: None,
                 unmatched: false,
+                semantic: None,
+                semantic_query: None,
+                semantic_address: None,
+                binding: None,
+                unmatched_reason: None,
             },
             value: "***".into(),
             commit: FillCommit::Blur,
@@ -379,6 +448,11 @@ mod tests {
                 name: Some("OK".into()),
                 ctx: None,
                 unmatched: false,
+                semantic: None,
+                semantic_query: None,
+                semantic_address: None,
+                binding: None,
+                unmatched_reason: None,
             },
         };
         let v = serde_json::to_value(&step).unwrap();
@@ -397,6 +471,11 @@ mod tests {
                 name: Some("发布".into()),
                 ctx: None,
                 unmatched: true,
+                semantic: None,
+                semantic_query: None,
+                semantic_address: None,
+                binding: None,
+                unmatched_reason: None,
             },
         };
         let v = serde_json::to_value(&step).unwrap();

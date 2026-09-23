@@ -18,7 +18,10 @@ import {
   type RecordStepAck,
   type RecordStopMessage,
 } from "@/lib/record-bridge";
-import { defaultCanonicalRecordingTargetProvider } from "@/lib/recording/default-canonical-perception";
+import {
+  defaultCanonicalRecordingTargetProvider,
+  recordingCanonicalPerception,
+} from "@/lib/recording/default-canonical-perception";
 import {
   type RecordFrameCoordinator,
   type RecordingCaptureScope,
@@ -843,6 +846,7 @@ async function finishRecordingAttempt(
 
   recording.settled = true;
   recordings.delete(sessionId);
+  recordingCanonicalPerception.releaseSession(sessionId);
   releaseBrowserObservationListenersIfIdle();
   const trace = buildTrace(recording);
   recording.resolveFinish(trace);
@@ -956,6 +960,7 @@ export async function handleRecordStart(
     recordings.get(params.session_id)?.observation?.cancel();
     deps.frameCoordinator?.cancel(requestId);
     recordings.delete(params.session_id);
+    recordingCanonicalPerception.releaseSession(params.session_id);
     releaseBrowserObservationListenersIfIdle();
     if (notifyContent) {
       try {
@@ -1189,6 +1194,7 @@ export function clearRecordingForSession(sessionId: string): void {
   const recording = recordings.get(sessionId);
   if (!recording) {
     recordings.delete(sessionId);
+    recordingCanonicalPerception.releaseSession(sessionId);
     releaseBrowserObservationListenersIfIdle();
     return;
   }
@@ -1200,6 +1206,7 @@ export function clearRecordingForSession(sessionId: string): void {
     recording.rejectFinish(new Error("recording cleared"));
   }
   recordings.delete(sessionId);
+  recordingCanonicalPerception.releaseSession(sessionId);
   releaseBrowserObservationListenersIfIdle();
 }
 

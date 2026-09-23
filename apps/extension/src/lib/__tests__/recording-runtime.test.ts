@@ -145,6 +145,42 @@ describe("RecordingObservationRuntime", () => {
     expect(second.semanticBindings?.[0]?.stable_ref).toBe("@e9");
   });
 
+  it("materializes an initially unseeded captured control without using its ref as identity", async () => {
+    const captured = (ref: string) => ({
+      ...observation("https://example.com/wiki"),
+      documentId: "doc-unseeded",
+      index: new ObservationNodeIndex({
+        rootFrameId: "root",
+        matchNodes: [],
+        refs: [{ ref, backendNodeId: 1, role: "button", name: "Save", line: 1 }],
+      }),
+    });
+    captureRecordingObservation
+      .mockResolvedValueOnce(captured("e1"))
+      .mockResolvedValueOnce(captured("e99"));
+    const session = new RecordingObservationSession({
+      semanticTargetProvider: defaultCanonicalRecordingTargetProvider,
+      recordingScope: {
+        browser_id: "browser-extension",
+        session_id: "unseeded-recording",
+        tab_id: 7,
+      },
+    });
+    const first = await session.capture(
+      { send: vi.fn() as unknown as CdpRunner["send"] },
+      { get: vi.fn(), query: vi.fn() } as unknown as ChromeTabsApi,
+      7,
+    );
+    const second = await session.capture(
+      { send: vi.fn() as unknown as CdpRunner["send"] },
+      { get: vi.fn(), query: vi.fn() } as unknown as ChromeTabsApi,
+      7,
+    );
+    expect(first.semanticTargets?.[0]?.target_id).toMatch(/^address:/);
+    expect(second.semanticTargets?.[0]?.target_id).toBe(first.semanticTargets?.[0]?.target_id);
+    expect(second.semanticTargets?.[0]?.target_id).not.toContain("e99");
+  });
+
   it("cancels an in-flight initial capture", async () => {
     captureRecordingObservation.mockImplementationOnce(
       (input: { signal?: AbortSignal }) =>
