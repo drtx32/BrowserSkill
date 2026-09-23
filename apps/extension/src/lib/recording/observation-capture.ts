@@ -142,6 +142,7 @@ export async function captureRecordingObservation(input: {
   cdp: CdpRunner;
   tabsApi: ChromeTabsApi;
   tabId: number;
+  documentIdentity?: () => Promise<string | undefined>;
   maxTokens: number;
   redactValues: boolean;
   signal?: AbortSignal;
@@ -153,10 +154,12 @@ export async function captureRecordingObservation(input: {
     conditionalSurfaceProbe: false,
     signal: input.signal,
   });
+  const documentId = await input.documentIdentity?.();
   return {
     rootFrameId: captured.rootFrameId,
-    documentId: captured.frames.find((frame) => frame.frameId === captured.rootFrameId)
-      ?.recordingDocumentId,
+    documentId:
+      documentId ??
+      captured.frames.find((frame) => frame.frameId === captured.rootFrameId)?.recordingDocumentId,
     index: new ObservationNodeIndex(captured),
     url,
     title,

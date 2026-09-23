@@ -51,6 +51,7 @@ import type {
   StopReason,
 } from "@/transport/types";
 import { TRACE_VERSION_V3 } from "@/transport/types";
+import { type BrowserNavigationApi, chromeBrowserNavigationApi } from "./browser-navigation";
 import { handleNavigate } from "./navigation";
 import {
   type CdpRunner,
@@ -298,6 +299,7 @@ export interface RecordDeps {
   cdp?: CdpRunner;
   signal?: AbortSignal;
   semanticTargetProvider?: CanonicalRecordingTargetProvider;
+  browserNavigation?: Pick<BrowserNavigationApi, "getFrame">;
 }
 
 export type RecordRuntimeDeps = Omit<RecordDeps, "frameCoordinator" | "signal"> & {
@@ -312,6 +314,7 @@ function getDefaultDeps(): RecordDeps {
       sendToTab: (tabId, msg) => chrome.tabs.sendMessage(tabId, msg),
       frameCoordinator: recordFrameCoordinator,
       semanticTargetProvider: defaultCanonicalRecordingTargetProvider,
+      browserNavigation: chromeBrowserNavigationApi,
     };
   }
   return defaultDeps;
@@ -924,6 +927,9 @@ export async function handleRecordStart(
             isTabAllowed: ctx.remote ? isTabAllowed : undefined,
             semanticTargetProvider:
               deps.semanticTargetProvider ?? defaultCanonicalRecordingTargetProvider,
+            documentIdentity: deps.browserNavigation
+              ? async (tabId) => (await deps.browserNavigation!.getFrame(tabId))?.documentId
+              : undefined,
             recordingScope: {
               browser_id: `window:${ctx.agentWindowId}`,
               session_id: params.session_id,

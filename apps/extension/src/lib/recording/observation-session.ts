@@ -45,6 +45,7 @@ export class RecordingObservationSession {
   readonly #maxTokens: number;
   readonly #redactValues: boolean;
   readonly #semanticTargetProvider?: CanonicalRecordingTargetProvider;
+  readonly #documentIdentity?: () => Promise<string | undefined>;
   readonly #recordingScope?: { browser_id: string; session_id: string; tab_id: number };
 
   constructor(
@@ -56,6 +57,7 @@ export class RecordingObservationSession {
       redactValues?: boolean;
       semanticTargetProvider?: CanonicalRecordingTargetProvider;
       recordingScope?: { browser_id: string; session_id: string; tab_id: number };
+      documentIdentity?: () => Promise<string | undefined>;
     } = {},
   ) {
     this.registry = options.registry ?? new RecordingStateRegistry();
@@ -64,6 +66,7 @@ export class RecordingObservationSession {
     this.#maxTokens = options.maxTokens ?? DEFAULT_MAX_PAGE_TOKENS;
     this.#redactValues = options.redactValues ?? false;
     this.#semanticTargetProvider = options.semanticTargetProvider;
+    this.#documentIdentity = options.documentIdentity;
     this.#recordingScope = options.recordingScope;
   }
 
@@ -80,6 +83,7 @@ export class RecordingObservationSession {
       cdp,
       tabsApi,
       tabId,
+      documentIdentity: this.#documentIdentity,
       maxTokens: this.#maxTokens,
       redactValues: this.#redactValues,
       signal,

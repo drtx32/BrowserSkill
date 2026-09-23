@@ -31,6 +31,7 @@ export class RecordingObservationRuntime {
   readonly #maxTokens?: number;
   readonly #redactValues: boolean;
   readonly #semanticTargetProvider?: CanonicalRecordingTargetProvider;
+  readonly #documentIdentity?: (tabId: number) => Promise<string | undefined>;
   readonly #recordingScope: { browser_id: string; session_id: string };
   #cancelled = false;
 
@@ -41,6 +42,7 @@ export class RecordingObservationRuntime {
     redactValues?: boolean;
     isTabAllowed?: (tabId: number) => boolean;
     semanticTargetProvider?: CanonicalRecordingTargetProvider;
+    documentIdentity?: (tabId: number) => Promise<string | undefined>;
     recordingScope?: { browser_id: string; session_id: string };
   }) {
     const check = (tabId: number) => {
@@ -82,6 +84,7 @@ export class RecordingObservationRuntime {
     this.#maxTokens = input.maxTokens;
     this.#redactValues = input.redactValues ?? false;
     this.#semanticTargetProvider = input.semanticTargetProvider;
+    this.#documentIdentity = input.documentIdentity;
     this.#recordingScope = input.recordingScope ?? {
       browser_id: "browser-extension",
       session_id: "recording",
@@ -98,6 +101,7 @@ export class RecordingObservationRuntime {
       redactValues: this.#redactValues,
       semanticTargetProvider: this.#semanticTargetProvider,
       recordingScope: { ...this.#recordingScope, tab_id: tabId },
+      documentIdentity: this.#documentIdentity ? () => this.#documentIdentity!(tabId) : undefined,
     });
     const context: TabRecordingContext = {
       session,

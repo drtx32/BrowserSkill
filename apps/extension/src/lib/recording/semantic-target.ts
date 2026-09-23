@@ -60,7 +60,7 @@ export function semanticQueryForRef(
   fallback?: CaptureTargetDescriptor,
 ): SemanticQuery | undefined {
   const origin = originOf(observation.url);
-  const document = observation.documentId ?? observation.rootFrameId;
+  const document = observation.documentId;
   if (!origin || !document) return undefined;
   const address: SemanticAddress = {
     origin,
