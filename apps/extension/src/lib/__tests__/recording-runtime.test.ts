@@ -15,6 +15,7 @@ vi.mock("../recording/document-settle", async (importOriginal) => {
 });
 
 import { ObservationNodeIndex } from "../recording/observation-capture";
+import { RecordingObservationSession } from "../recording/observation-session";
 import { RecordingObservationRuntime } from "../recording/recording-runtime";
 import type { RecordingDraftStep } from "../recording/types";
 
@@ -66,6 +67,35 @@ describe("RecordingObservationRuntime", () => {
     release(observation());
     await Promise.all([first, second, flushed]);
     expect(flushCompleted).toBe(true);
+  });
+
+  it("records canonical targets through the real capture session", async () => {
+    captureRecordingObservation.mockResolvedValueOnce(observation("https://example.com/wiki"));
+    const cdp = { send: vi.fn() as unknown as CdpRunner["send"] };
+    const tabsApi = { get: vi.fn(), query: vi.fn() } as unknown as ChromeTabsApi;
+    const session = new RecordingObservationSession({
+      semanticTargetProvider: (captured) => ({
+        targets: [
+          {
+            target_id: "wiki:save",
+            address: {
+              origin: "https://example.com",
+              document: captured.documentId ?? "doc-1",
+              role: "button",
+              name: "Save",
+            },
+          },
+        ],
+        bindings: [{ target_id: "wiki:save", stable_ref: "@e9", revision: 7, live: true }],
+      }),
+    });
+
+    const captured = await session.capture(cdp, tabsApi, 7);
+    expect(captured.semanticTargets?.[0]?.target_id).toBe("wiki:save");
+    expect(captured.semanticBindings?.[0]).toMatchObject({
+      target_id: "wiki:save",
+      stable_ref: "@e9",
+    });
   });
 
   it("cancels an in-flight initial capture", async () => {

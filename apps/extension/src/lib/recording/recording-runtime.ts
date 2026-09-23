@@ -3,6 +3,7 @@ import type { StopReason, TraceV3 } from "@/transport/types";
 import { type DocumentSettleScope, waitForDocumentSettled } from "./document-settle";
 import type { RegisteredObservation } from "./observation-capture";
 import { RecordingObservationSession } from "./observation-session";
+import type { CanonicalRecordingTargetProvider } from "./semantic-target";
 import { inferMissingPostStates, SettleController } from "./settle-controller";
 import { RecordingStateRegistry } from "./state-registry";
 import { buildTraceV3 } from "./trace-builder-v3";
@@ -29,6 +30,7 @@ export class RecordingObservationRuntime {
   readonly #contexts = new Map<number, TabRecordingContext>();
   readonly #maxTokens?: number;
   readonly #redactValues: boolean;
+  readonly #semanticTargetProvider?: CanonicalRecordingTargetProvider;
   #cancelled = false;
 
   constructor(input: {
@@ -37,6 +39,7 @@ export class RecordingObservationRuntime {
     maxTokens?: number;
     redactValues?: boolean;
     isTabAllowed?: (tabId: number) => boolean;
+    semanticTargetProvider?: CanonicalRecordingTargetProvider;
   }) {
     const check = (tabId: number) => {
       if (this.#cancelled || (input.isTabAllowed && !input.isTabAllowed(tabId))) {
@@ -76,6 +79,7 @@ export class RecordingObservationRuntime {
     this.#tabsApi = input.tabsApi;
     this.#maxTokens = input.maxTokens;
     this.#redactValues = input.redactValues ?? false;
+    this.#semanticTargetProvider = input.semanticTargetProvider;
   }
 
   #context(tabId: number): TabRecordingContext {
@@ -86,6 +90,7 @@ export class RecordingObservationRuntime {
       annotations: this.#annotations,
       maxTokens: this.#maxTokens,
       redactValues: this.#redactValues,
+      semanticTargetProvider: this.#semanticTargetProvider,
     });
     const context: TabRecordingContext = {
       session,

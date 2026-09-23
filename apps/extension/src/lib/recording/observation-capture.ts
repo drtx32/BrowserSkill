@@ -34,6 +34,15 @@ export interface RegisteredObservation {
   url: string;
   /** Optional current Wiki projection supplied by the canonical binding path. */
   semanticTargets?: readonly SemanticTarget[];
+  semanticBindings?: readonly SemanticBinding[];
+}
+
+/** Live-ref projection owned by CanonicalPerception, never an identity source. */
+export interface SemanticBinding {
+  target_id: string;
+  stable_ref: string | null;
+  revision: number;
+  live: boolean;
 }
 
 export interface RecordingDocumentScope {

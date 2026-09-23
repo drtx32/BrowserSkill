@@ -200,11 +200,8 @@ describe("matchObservationTarget", () => {
       fallback: { tag: "button", role: "button", name: "保存" },
     });
 
-    expect(target).toMatchObject({
-      ref: "e9",
-      semantic: { target_id: "page:save" },
-      binding: { stable_ref: "@e9", revision: 1 },
-    });
+    expect(target).toMatchObject({ ref: "e9", semantic: { target_id: "page:save" } });
+    expect(target.binding).toBeUndefined();
     expect(JSON.stringify(target)).not.toContain('target_id":"e9"');
   });
 });

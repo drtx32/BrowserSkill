@@ -93,6 +93,30 @@ describe("record observation annotations", () => {
 });
 
 describe("recording state ownership", () => {
+  it("marks capped deltas incomplete and requires a full refresh", () => {
+    const registry = new RecordingStateRegistry();
+    const first = registry.register({
+      url: URL,
+      documentId: "doc-1",
+      vomText: Array.from({ length: 250 }, (_, index) => `line-${index}`).join("\n"),
+    });
+    const state = registry.register({
+      url: URL,
+      documentId: "doc-1",
+      vomText: Array.from({ length: 250 }, (_, index) => `next-${index}`).join("\n"),
+    });
+    expect(state.delta).toMatchObject({ complete: false, truncated: true });
+    const trace = buildTraceV3({
+      registry,
+      drafts: [{ op: "scroll", preStateId: first.id, postStateId: state.id }],
+      startedAt: "2026-08-12T00:00:00.000Z",
+      stoppedBy: "user_finish",
+      bskVersion: "test",
+    });
+    expect(trace.states[1]).toMatchObject({ full_refresh_required: true });
+    expect(trace.metrics?.full_observe_equivalents).toBe(2);
+  });
+
   it("deduplicates within one recording and isolates ids between recordings", () => {
     const first = new RecordingStateRegistry();
     const second = new RecordingStateRegistry();

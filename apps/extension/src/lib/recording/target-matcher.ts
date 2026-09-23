@@ -55,12 +55,11 @@ function descriptor(
   fallback?: CaptureTargetDescriptor,
 ): TargetDescriptorV3 {
   const semantic = resolveRecordedSemanticTarget(observation, ref, fallback);
-  const currentBinding =
-    semantic.target && "current_binding" in semantic.target
-      ? (semantic.target as { current_binding?: { stable_ref?: string | null; revision?: number } })
-          .current_binding
-      : undefined;
-  const revision = currentBinding?.revision ?? observation.revision;
+  const currentBinding = semantic.target
+    ? observation.semanticBindings?.find(
+        (binding) => binding.target_id === semantic.target?.target_id,
+      )
+    : undefined;
   return {
     ref: ref.ref,
     ...(ref.role ? { role: ref.role } : {}),
@@ -72,10 +71,14 @@ function descriptor(
     ...(semantic.target
       ? {
           semantic: semantic.target,
-          binding: {
-            stable_ref: currentBinding?.stable_ref ?? `@${ref.ref.replace(/^@/, "")}`,
-            ...(revision !== undefined ? { revision } : {}),
-          },
+          ...(currentBinding?.live
+            ? {
+                binding: {
+                  ...(currentBinding.stable_ref ? { stable_ref: currentBinding.stable_ref } : {}),
+                  revision: currentBinding.revision,
+                },
+              }
+            : {}),
         }
       : {}),
   };

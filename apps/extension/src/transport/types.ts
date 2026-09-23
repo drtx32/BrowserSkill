@@ -975,7 +975,13 @@ export interface TraceStateV3 {
   document_id?: string;
   revision?: number;
   base_state?: string;
-  delta?: { added: string[]; removed: string[] };
+  delta?: {
+    added: string[];
+    removed: string[];
+    complete: boolean;
+    truncated: boolean;
+  };
+  full_refresh_required?: boolean;
 }
 
 export interface TraceMetricsV3 {

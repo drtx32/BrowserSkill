@@ -9,19 +9,32 @@ export interface RecordedStateEntry {
   documentId?: string;
   revision: number;
   baseStateId?: string;
-  delta?: { added: string[]; removed: string[] };
+  delta?: { added: string[]; removed: string[]; complete: boolean; truncated: boolean };
 }
 
 function stateIdentity(url: string, body: string): string {
   return `${url}\0${body}`;
 }
 
-function lineDelta(previous: string, next: string): { added: string[]; removed: string[] } {
+function lineDelta(
+  previous: string,
+  next: string,
+): {
+  added: string[];
+  removed: string[];
+  complete: boolean;
+  truncated: boolean;
+} {
   const before = new Set(previous.split("\n"));
   const after = new Set(next.split("\n"));
+  const added = [...after].filter((line) => !before.has(line));
+  const removed = [...before].filter((line) => !after.has(line));
+  const truncated = added.length > 200 || removed.length > 200;
   return {
-    added: [...after].filter((line) => !before.has(line)).slice(0, 200),
-    removed: [...before].filter((line) => !after.has(line)).slice(0, 200),
+    added: added.slice(0, 200),
+    removed: removed.slice(0, 200),
+    complete: !truncated,
+    truncated,
   };
 }
 

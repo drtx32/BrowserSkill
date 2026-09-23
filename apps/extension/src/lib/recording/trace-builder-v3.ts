@@ -73,33 +73,25 @@ export function buildTraceV3(input: {
     const baseState = entry.baseStateId
       ? (publishedId.get(entry.baseStateId) ?? entry.baseStateId)
       : undefined;
-    const deltaBody = entry.delta
-      ? [
-          `@delta base=${baseState ?? "unknown"}`,
-          ...entry.delta.added.map((line) => `+ ${line}`),
-          ...entry.delta.removed.map((line) => `- ${line}`),
-        ].join("\n")
-      : undefined;
     return {
       id,
       url: entry.url,
       ...(entry.title ? { title: entry.title } : {}),
-      body:
-        deltaBody ??
-        formatTraceStateBody({
-          stateId: id,
-          url: entry.url,
-          title: entry.title,
-          stepIds: remapDraftIds(entry.stepsHere, reduced.stepIdByDraftId),
-          vomText: entry.vomText,
-          annotations: annotationsByState.get(entry.id) ?? [],
-          stepIdByDraftId: reduced.stepIdByDraftId,
-        }),
+      body: formatTraceStateBody({
+        stateId: id,
+        url: entry.url,
+        title: entry.title,
+        stepIds: remapDraftIds(entry.stepsHere, reduced.stepIdByDraftId),
+        vomText: entry.vomText,
+        annotations: annotationsByState.get(entry.id) ?? [],
+        stepIdByDraftId: reduced.stepIdByDraftId,
+      }),
       ...(entry.truncated ? { truncated: true } : {}),
       ...(entry.documentId ? { document_id: entry.documentId } : {}),
       revision: entry.revision,
       ...(baseState ? { base_state: baseState } : {}),
       ...(entry.delta ? { delta: entry.delta } : {}),
+      ...(entry.delta?.truncated ? { full_refresh_required: true } : {}),
     };
   });
 
@@ -115,7 +107,9 @@ export function buildTraceV3(input: {
       state_count: states.length,
       full_state_count: states.filter((state) => !state.delta).length,
       delta_state_count: states.filter((state) => state.delta !== undefined).length,
-      full_observe_equivalents: states.filter((state) => !state.delta).length,
+      full_observe_equivalents: states.filter(
+        (state) => !state.delta || state.full_refresh_required,
+      ).length,
     },
     states,
     steps,

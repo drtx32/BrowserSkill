@@ -1,5 +1,6 @@
 import type { CdpRunner, ChromeTabsApi } from "@/tools/shared";
 import { captureRecordingObservation, type RegisteredObservation } from "./observation-capture";
+import type { CanonicalRecordingTargetProvider } from "./semantic-target";
 import { RecordingStateRegistry } from "./state-registry";
 import { matchObservationTarget, unmatchedTarget } from "./target-matcher";
 import type { RecordingDraftStep, StepAnnotation, TargetedRecordingDraft } from "./types";
@@ -43,6 +44,7 @@ export class RecordingObservationSession {
   readonly annotations: StepAnnotation[];
   readonly #maxTokens: number;
   readonly #redactValues: boolean;
+  readonly #semanticTargetProvider?: CanonicalRecordingTargetProvider;
 
   constructor(
     options: {
@@ -51,6 +53,7 @@ export class RecordingObservationSession {
       annotations?: StepAnnotation[];
       maxTokens?: number;
       redactValues?: boolean;
+      semanticTargetProvider?: CanonicalRecordingTargetProvider;
     } = {},
   ) {
     this.registry = options.registry ?? new RecordingStateRegistry();
@@ -58,6 +61,7 @@ export class RecordingObservationSession {
     this.annotations = options.annotations ?? [];
     this.#maxTokens = options.maxTokens ?? DEFAULT_MAX_PAGE_TOKENS;
     this.#redactValues = options.redactValues ?? false;
+    this.#semanticTargetProvider = options.semanticTargetProvider;
   }
 
   async capture(
@@ -92,6 +96,11 @@ export class RecordingObservationSession {
       index: captured.index,
       url: captured.url,
     };
+    const projection = this.#semanticTargetProvider?.(observation);
+    if (projection) {
+      observation.semanticTargets = projection.targets;
+      if (projection.bindings) observation.semanticBindings = projection.bindings;
+    }
     this.cursor.lastSettled = observation;
     this.cursor.lastCaptureAt = Date.now();
     return observation;

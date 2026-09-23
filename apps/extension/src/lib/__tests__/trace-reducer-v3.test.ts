@@ -162,9 +162,10 @@ describe("trace reducer v3", () => {
       document_id: "doc-1",
       revision: 2,
       base_state: "s1",
-      delta: { added: ["status Saved"], removed: [] },
+      delta: { added: ["status Saved"], removed: [], complete: true, truncated: false },
     });
-    expect(trace.states[1]?.body).toContain("@delta base=s1");
+    expect(trace.states[1]?.body).toContain("status Saved");
+    expect(trace.states[1]?.body).not.toContain("@delta base=s1");
     expect(trace.metrics).toMatchObject({
       full_state_count: 1,
       delta_state_count: 1,

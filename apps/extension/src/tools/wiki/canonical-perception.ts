@@ -202,6 +202,12 @@ export class CanonicalPerception {
     return clone(this.history.get(targetId) ?? []);
   }
 
+  /** Read-only projection for record/replay; the canonical map remains the sole identity store. */
+  currentTargets(scope: WikiScope): readonly TargetRecord[] {
+    if (!this.active || !this.scope || !sameScope(this.scope, scope)) return [];
+    return clone([...this.current.values()].filter((target) => target.status === "current"));
+  }
+
   private commit(
     scope: WikiScope,
     inputs: readonly CanonicalTargetInput[],

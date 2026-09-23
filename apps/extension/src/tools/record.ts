@@ -24,6 +24,7 @@ import {
   recordFrameCoordinator,
 } from "@/lib/recording/frame-coordinator";
 import { RecordingObservationRuntime } from "@/lib/recording/recording-runtime";
+import type { CanonicalRecordingTargetProvider } from "@/lib/recording/semantic-target";
 import {
   appendRecordedPayload,
   observeRecordedNavigation,
@@ -292,6 +293,7 @@ export interface RecordDeps {
   >;
   cdp?: CdpRunner;
   signal?: AbortSignal;
+  semanticTargetProvider?: CanonicalRecordingTargetProvider;
 }
 
 export type RecordRuntimeDeps = Omit<RecordDeps, "frameCoordinator" | "signal"> & {
@@ -914,6 +916,7 @@ export async function handleRecordStart(
             maxTokens: maxPageTokens,
             redactValues,
             isTabAllowed: ctx.remote ? isTabAllowed : undefined,
+            semanticTargetProvider: deps.semanticTargetProvider,
           })
         : null,
     stoppedBy: "user_finish",

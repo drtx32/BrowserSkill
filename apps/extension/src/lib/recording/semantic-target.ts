@@ -1,4 +1,6 @@
 import type { RenderedRef } from "@browser-skill/vom";
+import type { CanonicalPerception, TargetRecord } from "@/tools/wiki/canonical-perception";
+import type { WikiScope } from "@/tools/wiki/guarded-maintenance";
 import {
   resolveSemanticTarget,
   type SemanticAddress,
@@ -6,7 +8,42 @@ import {
   type SemanticTarget,
 } from "@/tools/wiki/semantic-address";
 import type { CaptureTargetDescriptor } from "../describe-target";
-import type { RegisteredObservation } from "./observation-capture";
+import type { RegisteredObservation, SemanticBinding } from "./observation-capture";
+
+export interface CanonicalRecordingProjection {
+  targets: readonly SemanticTarget[];
+  bindings?: readonly SemanticBinding[];
+}
+
+export type CanonicalRecordingTargetProvider = (
+  observation: RegisteredObservation,
+) => CanonicalRecordingProjection;
+
+/** Adapt the existing canonical perception projection without copying identity state. */
+export function projectionFromCanonicalPerception(
+  perception: CanonicalPerception,
+  scopeFor: (observation: RegisteredObservation) => WikiScope | undefined,
+): CanonicalRecordingTargetProvider {
+  return (observation) => {
+    const scope = scopeFor(observation);
+    if (!scope) return { targets: [] };
+    const records = perception.currentTargets(scope);
+    return {
+      targets: records.map((record: TargetRecord) => ({
+        target_id: record.target_id,
+        address: record.address,
+        ...(record.aliases ? { aliases: record.aliases } : {}),
+        ...(record.stableAttributes ? { stableAttributes: record.stableAttributes } : {}),
+        ...(record.structuralRelation ? { structuralRelation: record.structuralRelation } : {}),
+        ...(record.value !== undefined ? { value: record.value } : {}),
+      })),
+      bindings: records.map((record) => ({
+        target_id: record.target_id,
+        ...record.current_binding,
+      })),
+    };
+  };
+}
 
 function originOf(url: string): string | undefined {
   try {
