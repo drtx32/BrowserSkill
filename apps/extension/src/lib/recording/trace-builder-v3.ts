@@ -16,6 +16,15 @@ function publishedEntries(registry: RecordingStateRegistry, steps: StepV3[]): Re
   const entries = registry.values();
   if (steps.length === 0) return entries.slice(0, 1);
   const referenced = new Set(steps.flatMap((step) => [step.state, step.result.state]));
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  for (const entry of entries) {
+    if (!referenced.has(entry.id)) continue;
+    let base = entry.baseStateId;
+    while (base && !referenced.has(base)) {
+      referenced.add(base);
+      base = byId.get(base)?.baseStateId;
+    }
+  }
   return entries.filter((entry) => referenced.has(entry.id));
 }
 
@@ -61,20 +70,36 @@ export function buildTraceV3(input: {
   }));
   const states: TraceStateV3[] = entries.map((entry) => {
     const id = publishedId.get(entry.id) ?? entry.id;
+    const baseState = entry.baseStateId
+      ? (publishedId.get(entry.baseStateId) ?? entry.baseStateId)
+      : undefined;
+    const deltaBody = entry.delta
+      ? [
+          `@delta base=${baseState ?? "unknown"}`,
+          ...entry.delta.added.map((line) => `+ ${line}`),
+          ...entry.delta.removed.map((line) => `- ${line}`),
+        ].join("\n")
+      : undefined;
     return {
       id,
       url: entry.url,
       ...(entry.title ? { title: entry.title } : {}),
-      body: formatTraceStateBody({
-        stateId: id,
-        url: entry.url,
-        title: entry.title,
-        stepIds: remapDraftIds(entry.stepsHere, reduced.stepIdByDraftId),
-        vomText: entry.vomText,
-        annotations: annotationsByState.get(entry.id) ?? [],
-        stepIdByDraftId: reduced.stepIdByDraftId,
-      }),
+      body:
+        deltaBody ??
+        formatTraceStateBody({
+          stateId: id,
+          url: entry.url,
+          title: entry.title,
+          stepIds: remapDraftIds(entry.stepsHere, reduced.stepIdByDraftId),
+          vomText: entry.vomText,
+          annotations: annotationsByState.get(entry.id) ?? [],
+          stepIdByDraftId: reduced.stepIdByDraftId,
+        }),
       ...(entry.truncated ? { truncated: true } : {}),
+      ...(entry.documentId ? { document_id: entry.documentId } : {}),
+      revision: entry.revision,
+      ...(baseState ? { base_state: baseState } : {}),
+      ...(entry.delta ? { delta: entry.delta } : {}),
     };
   });
 
@@ -86,6 +111,12 @@ export function buildTraceV3(input: {
     stopped_by: input.stoppedBy,
     entry: { start_url: resolveDraftStartUrl(input.drafts, input.startUrl, states[0]?.url) },
     recorder: { bsk: input.bskVersion, vom: VOM_FORMAT_VERSION },
+    metrics: {
+      state_count: states.length,
+      full_state_count: states.filter((state) => !state.delta).length,
+      delta_state_count: states.filter((state) => state.delta !== undefined).length,
+      full_observe_equivalents: states.filter((state) => !state.delta).length,
+    },
     states,
     steps,
   };

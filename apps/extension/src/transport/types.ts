@@ -3,6 +3,8 @@
 // stay structural (interface, not class) so the same JSON parses on both
 // sides without extra adapters.
 
+import type { SemanticAddress, SemanticQuery, SemanticTarget } from "@/tools/wiki/semantic-address";
+
 export type RpcId = string;
 
 export type ErrorCode =
@@ -949,6 +951,12 @@ export interface TargetDescriptorV3 {
   name?: string;
   ctx?: string;
   unmatched?: boolean;
+  unmatched_reason?: "no_unique_match" | "missing_observation" | "document_unavailable";
+  /** Canonical Wiki identity/query; never derived from the live @eN projection. */
+  semantic?: SemanticTarget;
+  semantic_query?: SemanticQuery;
+  semantic_address?: Partial<SemanticAddress>;
+  binding?: { stable_ref?: string; revision?: number };
 }
 
 export interface RecorderInfo {
@@ -964,6 +972,17 @@ export interface TraceStateV3 {
   title?: string;
   body: string;
   truncated?: boolean;
+  document_id?: string;
+  revision?: number;
+  base_state?: string;
+  delta?: { added: string[]; removed: string[] };
+}
+
+export interface TraceMetricsV3 {
+  state_count: number;
+  full_state_count: number;
+  delta_state_count: number;
+  full_observe_equivalents: number;
 }
 
 export interface StepResultV3 {
@@ -1086,6 +1105,7 @@ export interface TraceV3 {
   stopped_by: StopReason;
   entry: TraceEntry;
   recorder: RecorderInfo;
+  metrics?: TraceMetricsV3;
   states: TraceStateV3[];
   steps: StepV3[];
 }

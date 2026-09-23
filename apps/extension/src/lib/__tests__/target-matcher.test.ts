@@ -1,6 +1,7 @@
 import type { RenderedRef } from "@browser-skill/vom";
 import { describe, expect, it } from "vitest";
 import type { CaptureVomMatchNode } from "@/tools/capture-vom-observation";
+import type { SemanticTarget } from "@/tools/wiki/semantic-address";
 import { ObservationNodeIndex, type RegisteredObservation } from "../recording/observation-capture";
 import { matchObservationTarget } from "../recording/target-matcher";
 
@@ -17,12 +18,16 @@ function node(backendNodeId: number, frameId: string, x = 10): CaptureVomMatchNo
 function observation(
   matchNodes: CaptureVomMatchNode[],
   refs: RenderedRef[],
+  semanticTargets?: readonly SemanticTarget[],
 ): RegisteredObservation {
   return {
     stateId: "s1",
+    revision: 1,
     rootFrameId: "root",
     index: new ObservationNodeIndex({ rootFrameId: "root", matchNodes, refs }),
     url: "https://example.com",
+    documentId: "doc-1",
+    ...(semanticTargets ? { semanticTargets } : {}),
   };
 }
 
@@ -49,7 +54,19 @@ describe("matchObservationTarget", () => {
       ),
       hint: { geometry: { rect: { x: 10, y: 20, w: 100, h: 30 }, tag: "button" } },
     });
-    expect(target).toEqual({ ref: "e1", role: "button", name: "发布" });
+    expect(target).toMatchObject({
+      ref: "e1",
+      role: "button",
+      name: "发布",
+      semantic_query: {
+        address: {
+          origin: "https://example.com",
+          document: "doc-1",
+          role: "button",
+          name: "发布",
+        },
+      },
+    });
   });
 
   it("uses frame id with backend node id so sibling frames cannot collide", () => {
@@ -95,7 +112,7 @@ describe("matchObservationTarget", () => {
       hint: { geometry: { rect: { x: 10, y: 20, w: 100, h: 30 }, tag: "button" } },
       fallback: { tag: "button", name: "发布" },
     });
-    expect(target).toEqual({ name: "发布", unmatched: true });
+    expect(target).toEqual({ name: "发布", unmatched: true, unmatched_reason: "no_unique_match" });
   });
 
   it("fails closed when the source Document has no VOM frame mapping", () => {
@@ -110,7 +127,12 @@ describe("matchObservationTarget", () => {
       },
       fallback: { tag: "button", role: "button", name: "发布" },
     });
-    expect(target).toEqual({ role: "button", name: "发布", unmatched: true });
+    expect(target).toEqual({
+      role: "button",
+      name: "发布",
+      unmatched: true,
+      unmatched_reason: "document_unavailable",
+    });
   });
 
   it("returns unmatched for ambiguous geometry", () => {
@@ -155,5 +177,34 @@ describe("matchObservationTarget", () => {
       fallback: { tag: "button", role: "button", name: "取消" },
     });
     expect(target.ref).toBe("e2");
+  });
+
+  it("records canonical Wiki identity while keeping the live ref as a binding", () => {
+    const target = matchObservationTarget({
+      observation: observation(
+        [node(42, "root")],
+        [{ ref: "e9", backendNodeId: 42, role: "button", name: "保存", line: 1 }],
+        [
+          {
+            target_id: "page:save",
+            address: {
+              origin: "https://example.com",
+              document: "doc-1",
+              role: "button",
+              name: "保存",
+            },
+          },
+        ],
+      ),
+      hint: { geometry: { rect: { x: 10, y: 20, w: 100, h: 30 }, tag: "button" } },
+      fallback: { tag: "button", role: "button", name: "保存" },
+    });
+
+    expect(target).toMatchObject({
+      ref: "e9",
+      semantic: { target_id: "page:save" },
+      binding: { stable_ref: "@e9", revision: 1 },
+    });
+    expect(JSON.stringify(target)).not.toContain('target_id":"e9"');
   });
 });

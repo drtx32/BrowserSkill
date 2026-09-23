@@ -122,7 +122,12 @@ describe("draft binding", () => {
       captureTarget: { tag: "button", role: "button", name: "新建" },
     };
     session.bindDraft(draft, 1);
-    expect(draft.matchedTarget).toEqual({ role: "button", name: "新建", unmatched: true });
+    expect(draft.matchedTarget).toEqual({
+      role: "button",
+      name: "新建",
+      unmatched: true,
+      unmatched_reason: "missing_observation",
+    });
     expect(draft.preStateId).toBeUndefined();
   });
 
@@ -141,6 +146,7 @@ describe("draft binding", () => {
       role: "button",
       name: "Confirm",
       unmatched: true,
+      unmatched_reason: "no_unique_match",
     });
   });
 });

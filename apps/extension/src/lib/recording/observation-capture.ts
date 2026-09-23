@@ -6,6 +6,7 @@ import {
   captureVomObservation,
 } from "@/tools/capture-vom-observation";
 import type { CdpRunner, ChromeTabsApi } from "@/tools/shared";
+import type { SemanticTarget } from "@/tools/wiki/semantic-address";
 
 export interface IndexedObservationNode {
   frameId: string;
@@ -15,6 +16,8 @@ export interface IndexedObservationNode {
 
 export interface CapturedRecordingObservation {
   rootFrameId: string;
+  documentId?: string;
+  revision?: number;
   index: ObservationNodeIndex;
   url: string;
   title?: string;
@@ -25,8 +28,12 @@ export interface CapturedRecordingObservation {
 export interface RegisteredObservation {
   stateId: string;
   rootFrameId: string;
+  documentId?: string;
+  revision?: number;
   index: ObservationNodeIndex;
   url: string;
+  /** Optional current Wiki projection supplied by the canonical binding path. */
+  semanticTargets?: readonly SemanticTarget[];
 }
 
 export interface RecordingDocumentScope {
@@ -47,6 +54,7 @@ export class ObservationNodeIndex {
   readonly #refById = new Map<string, RenderedRef>();
   readonly #refsByFrame = new Map<string, RenderedRef[]>();
   readonly #scopeByProducer = new Map<string, RecordingDocumentScope | null>();
+  readonly documentId?: string;
 
   constructor(
     input: Pick<CaptureVomObservationResult, "rootFrameId" | "matchNodes" | "refs"> &
@@ -64,6 +72,7 @@ export class ObservationNodeIndex {
     for (const frame of input.frames ?? []) {
       const documentId = frame.recordingDocumentId;
       if (!documentId) continue;
+      if (frame.frameId === input.rootFrameId && !this.documentId) this.documentId = documentId;
       this.#scopeByProducer.set(
         documentId,
         this.#scopeByProducer.has(documentId)
@@ -83,6 +92,10 @@ export class ObservationNodeIndex {
       bucket.push(entry);
       this.#nodesByFrameTag.set(key, bucket);
     }
+  }
+
+  documentIdentity(): string | undefined {
+    return this.documentId;
   }
 
   candidates(frameId: string, tag: string): readonly IndexedObservationNode[] {
@@ -131,6 +144,8 @@ export async function captureRecordingObservation(input: {
   });
   return {
     rootFrameId: captured.rootFrameId,
+    documentId: captured.frames.find((frame) => frame.frameId === captured.rootFrameId)
+      ?.recordingDocumentId,
     index: new ObservationNodeIndex(captured),
     url,
     title,

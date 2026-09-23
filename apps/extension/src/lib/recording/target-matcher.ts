@@ -2,6 +2,7 @@ import type { RenderedRef } from "@browser-skill/vom";
 import type { TargetDescriptorV3 } from "@/transport/types";
 import type { CaptureTargetDescriptor } from "../describe-target";
 import type { IndexedObservationNode, RegisteredObservation } from "./observation-capture";
+import { resolveRecordedSemanticTarget } from "./semantic-target";
 import type { TargetGeometry, TargetMatchHint } from "./types";
 
 const MATCH_TOLERANCE_PX = 2;
@@ -23,11 +24,15 @@ function candidateMatches(
   return rect != null && rectMatches(geometry.rect, rect);
 }
 
-export function unmatchedTarget(fallback?: CaptureTargetDescriptor): TargetDescriptorV3 {
+export function unmatchedTarget(
+  fallback?: CaptureTargetDescriptor,
+  reason: TargetDescriptorV3["unmatched_reason"] = "no_unique_match",
+): TargetDescriptorV3 {
   return {
     ...(fallback?.role ? { role: fallback.role } : {}),
     ...(fallback?.name ? { name: fallback.name } : {}),
     unmatched: true,
+    unmatched_reason: reason,
   };
 }
 
@@ -44,12 +49,35 @@ function matchesSemantics(ref: RenderedRef, fallback?: CaptureTargetDescriptor):
   return true;
 }
 
-function descriptor(ref: RenderedRef): TargetDescriptorV3 {
+function descriptor(
+  observation: RegisteredObservation,
+  ref: RenderedRef,
+  fallback?: CaptureTargetDescriptor,
+): TargetDescriptorV3 {
+  const semantic = resolveRecordedSemanticTarget(observation, ref, fallback);
+  const currentBinding =
+    semantic.target && "current_binding" in semantic.target
+      ? (semantic.target as { current_binding?: { stable_ref?: string | null; revision?: number } })
+          .current_binding
+      : undefined;
+  const revision = currentBinding?.revision ?? observation.revision;
   return {
     ref: ref.ref,
     ...(ref.role ? { role: ref.role } : {}),
     ...(ref.name ? { name: ref.name } : {}),
     ...(ref.ctx ? { ctx: ref.ctx } : {}),
+    ...(semantic.query
+      ? { semantic_query: semantic.query, semantic_address: semantic.query.address }
+      : {}),
+    ...(semantic.target
+      ? {
+          semantic: semantic.target,
+          binding: {
+            stable_ref: currentBinding?.stable_ref ?? `@${ref.ref.replace(/^@/, "")}`,
+            ...(revision !== undefined ? { revision } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -58,7 +86,7 @@ export function matchObservationTarget(input: {
   hint?: TargetMatchHint;
   fallback?: CaptureTargetDescriptor;
 }): TargetDescriptorV3 {
-  if (input.hint?.frameId === null) return unmatchedTarget(input.fallback);
+  if (input.hint?.frameId === null) return unmatchedTarget(input.fallback, "document_unavailable");
   const frameId = input.hint?.frameId ?? input.observation.rootFrameId;
   const geometry = input.hint?.geometry;
   if (geometry) {
@@ -69,11 +97,13 @@ export function matchObservationTarget(input: {
           candidate.ref &&
           candidateMatches(candidate, geometry, input.hint?.geometrySpace ?? "top"),
       );
-    if (matches.length === 1) return descriptor(matches[0]!.ref!);
+    if (matches.length === 1)
+      return descriptor(input.observation, matches[0]!.ref!, input.fallback);
     const semanticMatches = matches.filter(
       (candidate) => candidate.ref && matchesSemantics(candidate.ref, input.fallback),
     );
-    if (semanticMatches.length === 1) return descriptor(semanticMatches[0]!.ref!);
+    if (semanticMatches.length === 1)
+      return descriptor(input.observation, semanticMatches[0]!.ref!, input.fallback);
     return unmatchedTarget(input.fallback);
   }
 
@@ -81,6 +111,6 @@ export function matchObservationTarget(input: {
     .refs(frameId)
     .filter((ref) => matchesSemantics(ref, input.fallback));
   return semanticMatches.length === 1
-    ? descriptor(semanticMatches[0]!)
+    ? descriptor(input.observation, semanticMatches[0]!, input.fallback)
     : unmatchedTarget(input.fallback);
 }

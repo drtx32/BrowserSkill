@@ -129,4 +129,46 @@ describe("trace reducer v3", () => {
       target: { role: "button", name: "Save", unmatched: true },
     });
   });
+
+  it("exports same-document updates as base-plus-delta state with observe metrics", () => {
+    const registry = new RecordingStateRegistry();
+    const first = registry.register({
+      url: "https://example.com",
+      documentId: "doc-1",
+      vomText: "button Save",
+    });
+    const second = registry.register({
+      url: "https://example.com#saved",
+      documentId: "doc-1",
+      vomText: "button Save\nstatus Saved",
+    });
+    const trace = buildTraceV3({
+      registry,
+      drafts: [
+        {
+          op: "click",
+          captureTarget: { tag: "button", name: "Save" },
+          preStateId: first.id,
+          postStateId: second.id,
+        },
+      ],
+      startedAt: "2026-08-12T00:00:00.000Z",
+      stoppedBy: "user_finish",
+      bskVersion: "test",
+    });
+
+    expect(trace.states).toHaveLength(2);
+    expect(trace.states[1]).toMatchObject({
+      document_id: "doc-1",
+      revision: 2,
+      base_state: "s1",
+      delta: { added: ["status Saved"], removed: [] },
+    });
+    expect(trace.states[1]?.body).toContain("@delta base=s1");
+    expect(trace.metrics).toMatchObject({
+      full_state_count: 1,
+      delta_state_count: 1,
+      full_observe_equivalents: 1,
+    });
+  });
 });

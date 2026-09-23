@@ -79,6 +79,7 @@ export class RecordingObservationSession {
     });
     const state = this.registry.register({
       url: captured.url,
+      documentId: captured.documentId,
       title: captured.title,
       vomText: captured.vomText,
       truncated: captured.truncated,
@@ -86,6 +87,8 @@ export class RecordingObservationSession {
     const observation: RegisteredObservation = {
       stateId: state.id,
       rootFrameId: captured.rootFrameId,
+      documentId: captured.documentId,
+      revision: state.revision,
       index: captured.index,
       url: captured.url,
     };
@@ -103,7 +106,7 @@ export class RecordingObservationSession {
             hint: draft.targetHint,
             fallback: draft.captureTarget,
           })
-        : unmatchedTarget(draft.captureTarget);
+        : unmatchedTarget(draft.captureTarget, "missing_observation");
     }
     if (!observation) return;
 
