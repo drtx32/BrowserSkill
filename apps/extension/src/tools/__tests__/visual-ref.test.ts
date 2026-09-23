@@ -197,7 +197,17 @@ describe("typed visual refs", () => {
     // reads through cdp. The visual-ref path must still avoid scrolling or
     // highlighting the visual anchor itself.
     expect(sendToTab).toHaveBeenCalled();
-    for (const [, message] of sendToTab.mock.calls)
+    const visualMessages = sendToTab.mock.calls
+      .map(([, message]) => message)
+      .filter(
+        (message): message is { rects: unknown[]; selectors: unknown[] } =>
+          typeof message === "object" &&
+          message !== null &&
+          "rects" in message &&
+          "selectors" in message,
+      );
+    expect(visualMessages).not.toHaveLength(0);
+    for (const message of visualMessages)
       expect(message).toMatchObject({ rects: [], selectors: [] });
   });
 });
