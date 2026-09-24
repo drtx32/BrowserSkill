@@ -125,7 +125,14 @@ export async function handleWheel(
     if (denied) return denied;
     // Resolve (and, if needed, refresh) before hidden-page input preparation.
     if (params.ref) {
-      const node = await resolveBackendNode(cdp, ctx, target, { ref: params.ref }, "wheel", deps.reobserve);
+      const node = await resolveBackendNode(
+        cdp,
+        ctx,
+        target,
+        { ref: params.ref },
+        "wheel",
+        deps.reobserve,
+      );
       if (isRpcError(node)) return node;
     }
     return await withInputReady(ctx, target.tabId, { ...deps, deadline }, async (input) => {

@@ -537,7 +537,14 @@ export async function handleClick(
       clickVisualPoint(ctx, target, params, deps, consumed, input.markSent),
     );
   }
-  const resolved = await resolveActionTarget(deps.cdp, ctx, target, params, "click", deps.reobserve);
+  const resolved = await resolveActionTarget(
+    deps.cdp,
+    ctx,
+    target,
+    params,
+    "click",
+    deps.reobserve,
+  );
   if (isRpcError(resolved)) return resolved;
   return withInputReady(ctx, target.tabId, { ...deps, deadline }, (input) =>
     clickResolvedTarget(ctx, resolved, params, deps, input.markSent),
