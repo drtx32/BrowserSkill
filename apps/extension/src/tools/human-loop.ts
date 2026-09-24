@@ -109,13 +109,20 @@ function fingerprint(value: unknown): string {
 async function captureHelpCheckpoint(
   help: Pick<ActiveHelpRequest, "primaryTabId" | "deps">,
 ): Promise<HelpCheckpointSummary> {
-  const tab = await help.deps.tabsApi.get(help.primaryTabId).catch(() => ({ url: "" } as chrome.tabs.Tab));
-  const tabs = typeof tab.windowId === "number"
-    ? await help.deps.tabsApi.query({ windowId: tab.windowId }).catch(() => [])
-    : [];
+  const tab = await help.deps.tabsApi
+    .get(help.primaryTabId)
+    .catch(() => ({ url: "" }) as chrome.tabs.Tab);
+  const tabs =
+    typeof tab.windowId === "number"
+      ? await help.deps.tabsApi.query({ windowId: tab.windowId }).catch(() => [])
+      : [];
   const tabSummary = tabs
     .filter((item): item is chrome.tabs.Tab & { id: number } => typeof item.id === "number")
-    .map((item) => ({ id: item.id, ...(item.url ? { url: item.url } : {}), active: item.active === true }))
+    .map((item) => ({
+      id: item.id,
+      ...(item.url ? { url: item.url } : {}),
+      active: item.active === true,
+    }))
     .sort((a, b) => a.id - b.id);
   let dom: unknown = null;
   let accessibility: unknown = null;
@@ -125,10 +132,14 @@ async function captureHelpCheckpoint(
       dom = await help.deps.cdp.send(help.primaryTabId, "DOMSnapshot.captureSnapshot", {
         computedStyles: [],
       });
-    } catch { /* best effort: a detached page is still a meaningful state */ }
+    } catch {
+      /* best effort: a detached page is still a meaningful state */
+    }
     try {
       accessibility = await help.deps.cdp.send(help.primaryTabId, "Accessibility.getFullAXTree");
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
     try {
       const response = await help.deps.cdp.send<{ result?: { value?: typeof indicators } }>(
         help.primaryTabId,
@@ -143,7 +154,9 @@ async function captureHelpCheckpoint(
         },
       );
       if (response.result?.value) indicators = response.result.value;
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
   }
   return {
     url: tab.url ?? "",
@@ -154,7 +167,10 @@ async function captureHelpCheckpoint(
   };
 }
 
-function diffHelpCheckpoints(before: HelpCheckpointSummary, after: HelpCheckpointSummary): HelpStateDiff {
+function diffHelpCheckpoints(
+  before: HelpCheckpointSummary,
+  after: HelpCheckpointSummary,
+): HelpStateDiff {
   const url_changed = before.url !== after.url;
   const tabs_changed = JSON.stringify(before.tabs) !== JSON.stringify(after.tabs);
   const dom_changed = before.dom_signature !== after.dom_signature;
@@ -167,7 +183,16 @@ function diffHelpCheckpoints(before: HelpCheckpointSummary, after: HelpCheckpoin
     ...(accessibility_changed ? ["accessibility"] : []),
     ...(indicators_changed ? ["indicators"] : []),
   ];
-  return { changed, url_changed, tabs_changed, dom_changed, accessibility_changed, indicators_changed, before, after };
+  return {
+    changed,
+    url_changed,
+    tabs_changed,
+    dom_changed,
+    accessibility_changed,
+    indicators_changed,
+    before,
+    after,
+  };
 }
 
 const activeHelpRequests = new Map<string, ActiveHelpRequest>();
