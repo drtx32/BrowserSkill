@@ -621,16 +621,6 @@ async fn handle_tool_dispatch(
     method: Method,
     params: Value,
 ) -> ResponseBody {
-    // `BSK_REQUEST_HELP=off` (unattended mode): never forward the
-    // blocking human-in-loop call to the extension; answer immediately
-    // with a synthetic `disabled` result.
-    if method == Method::ToolRequestHelp && crate::cli::human_loop::request_help_disabled() {
-        let result = crate::cli::human_loop::disabled_help_result(
-            params.get("tab_id").and_then(Value::as_i64).unwrap_or(0),
-            crate::cli::human_loop::REQUEST_HELP_DISABLED_NOTE,
-        );
-        return ResponseBody::Ok(serde_json::to_value(result).unwrap_or(Value::Null));
-    }
     let session_id = match params.get("session_id").and_then(|v| v.as_str()) {
         Some(s) if !s.is_empty() => SessionId(s.to_string()),
         _ => {
