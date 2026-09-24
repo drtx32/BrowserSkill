@@ -490,7 +490,8 @@ mod handshake_payload_tests {
             "server": "browser-skill-daemon",
             "version": "0.1.0",
             "protocol_version": "1.0"
-        })).unwrap();
+        }))
+        .unwrap();
         let encoded = serde_json::to_value(result).unwrap();
         assert!(encoded.get("wiki").is_none());
         assert_eq!(encoded["protocol_version"], "1.0");
@@ -593,7 +594,14 @@ pub struct BrowserLeaseStatus {
 
 impl BrowserLeaseStatus {
     pub fn free(browser_instance_id: &str) -> Self {
-        Self { browser_instance_id: browser_instance_id.into(), owner: None, token: None, acquired_at_ms: None, expires_at_ms: None, remaining_ms: None }
+        Self {
+            browser_instance_id: browser_instance_id.into(),
+            owner: None,
+            token: None,
+            acquired_at_ms: None,
+            expires_at_ms: None,
+            remaining_ms: None,
+        }
     }
 }
 
@@ -737,7 +745,10 @@ mod status_compat_tests {
             .diagnostics
             .as_ref()
             .expect("diagnostics should be present");
-        assert_eq!(diagnostics.active_tabs[0].session_id.as_deref(), Some("abcd"));
+        assert_eq!(
+            diagnostics.active_tabs[0].session_id.as_deref(),
+            Some("abcd")
+        );
         assert_eq!(diagnostics.extension_interference_signals.len(), 1);
     }
 }

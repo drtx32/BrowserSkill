@@ -48,10 +48,14 @@ When resuming, `bsk session history --json --limit 20` gives bounded redacted
 history; it does not replace a fresh observation. Session start acquires the
 short-lived mutation lease and accepted mutations renew it; passive reads do
 not. Use `bsk lease status`, `renew`, or `release` for an explicit handoff.
-Timeouts only end controller execution or its lease: they must not close the
-browser, tabs, pages, Agent Window, or unsaved content. Reconnect/rebind the
+timeouts only end controller execution or its lease; must not close the browser, tabs, pages, Agent Window, or unsaved content. Reconnect/rebind the
 existing session after lease-state loss; a missing lease record grants no
 authority.
+
+For Same-page stable logical work, automatically reacquires
+the lease only while the existing session remains valid. If another controller
+holds it, stop acting rather than refreshing or replaying. Treat real
+navigation/page/origin identity changes as a new observation boundary.
 
 1. Define success from the user's request. Use `default` after bootstrap; for
    the alternate path retain its session id. With multiple browsers use

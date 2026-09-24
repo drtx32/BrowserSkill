@@ -263,9 +263,12 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
                 },
-                Method::WikiCapabilities | Method::WikiStatus | Method::WikiEvents | Method::WikiDelta | Method::WikiView | Method::WikiRetrieve => {
-                    handle_wiki_read(method, &state, params)
-                }
+                Method::WikiCapabilities
+                | Method::WikiStatus
+                | Method::WikiEvents
+                | Method::WikiDelta
+                | Method::WikiView
+                | Method::WikiRetrieve => handle_wiki_read(method, &state, params),
                 Method::SessionStartTracked => {
                     super::session_requests::start(&state, rpc_id, params).await
                 }
@@ -289,9 +292,10 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
                 },
-                Method::LeaseAcquire | Method::LeaseRenew | Method::LeaseRelease | Method::LeaseStatus => {
-                    handle_lease(&state, method, params)
-                }
+                Method::LeaseAcquire
+                | Method::LeaseRenew
+                | Method::LeaseRelease
+                | Method::LeaseStatus => handle_lease(&state, method, params),
                 Method::BrowserList => match handle_browser_list(&state, params).await {
                     Ok(v) => ResponseBody::Ok(v),
                     Err(e) => ResponseBody::Err(e),
@@ -359,7 +363,9 @@ pub fn full_handler(status: DaemonStatus, state: Arc<DaemonState>) -> RpcHandler
 }
 
 fn wiki_read_enabled() -> bool {
-    std::env::var("BSK_WIKI_READ").map(|value| matches!(value.as_str(), "1" | "true" | "on")).unwrap_or(false)
+    std::env::var("BSK_WIKI_READ")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "on"))
+        .unwrap_or(false)
 }
 
 fn wiki_capabilities() -> Value {
@@ -381,7 +387,9 @@ fn wiki_unsupported() -> ResponseBody {
     ResponseBody::Err(RpcError {
         code: ErrorCode::Unsupported,
         message: "read-only Wiki surfaces are unavailable".into(),
-        data: Some(serde_json::json!({"reason": "feature_disabled_or_peer_unsupported", "fallback": "tool.observe"})),
+        data: Some(
+            serde_json::json!({"reason": "feature_disabled_or_peer_unsupported", "fallback": "tool.observe"}),
+        ),
     })
 }
 
@@ -406,57 +414,118 @@ fn handle_wiki_read_with_enabled(
     params: Value,
     enabled: bool,
 ) -> ResponseBody {
-    if !enabled { return wiki_unsupported(); }
-    if method == Method::WikiCapabilities { return ResponseBody::Ok(wiki_capabilities()); }
-    if method == Method::WikiStatus && params.as_object().map(|object| object.is_empty()).unwrap_or(true) {
+    if !enabled {
+        return wiki_unsupported();
+    }
+    if method == Method::WikiCapabilities {
+        return ResponseBody::Ok(wiki_capabilities());
+    }
+    if method == Method::WikiStatus
+        && params
+            .as_object()
+            .map(|object| object.is_empty())
+            .unwrap_or(true)
+    {
         // Metadata only: never enumerate persisted pages.
-        return ResponseBody::Ok(serde_json::json!({"enabled": true, "capabilities": wiki_capabilities()}));
+        return ResponseBody::Ok(
+            serde_json::json!({"enabled": true, "capabilities": wiki_capabilities()}),
+        );
     }
     let has_page = params.get("page_instance_id").is_some() || params.get("scope").is_some();
     let (page_id, scope, resolution) = if has_page {
         let page_id = params.get("page_instance_id").and_then(Value::as_str);
-        let scope = params.get("scope").cloned().and_then(|value| serde_json::from_value::<bsk_protocol::WikiScope>(value).ok());
+        let scope = params
+            .get("scope")
+            .cloned()
+            .and_then(|value| serde_json::from_value::<bsk_protocol::WikiScope>(value).ok());
         let (Some(page_id), Some(scope)) = (page_id, scope) else {
-            return ResponseBody::Err(invalid_params("explicit Wiki reads require page_instance_id and the complete five-field scope"));
+            return ResponseBody::Err(invalid_params(
+                "explicit Wiki reads require page_instance_id and the complete five-field scope",
+            ));
         };
-        (page_id.to_owned(), scope, serde_json::json!({"mode": "explicit"}))
+        (
+            page_id.to_owned(),
+            scope,
+            serde_json::json!({"mode": "explicit"}),
+        )
     } else {
-        let session_id = params.get("session_id").and_then(Value::as_str).unwrap_or("default");
+        let session_id = params
+            .get("session_id")
+            .and_then(Value::as_str)
+            .unwrap_or("default");
         let pages = state.wiki.active_pages_for_session(session_id);
         if pages.is_empty() {
-            return ResponseBody::Err(RpcError { code: ErrorCode::NotFound, message: "no current Wiki page is available for this session".into(), data: Some(serde_json::json!({"reason": "current_page_unavailable", "session_id": session_id, "fallback": "tool.observe"})) });
+            return ResponseBody::Err(RpcError {
+                code: ErrorCode::NotFound,
+                message: "no current Wiki page is available for this session".into(),
+                data: Some(
+                    serde_json::json!({"reason": "current_page_unavailable", "session_id": session_id, "fallback": "tool.observe"}),
+                ),
+            });
         }
         if pages.len() > 1 {
-            return ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: "multiple current Wiki pages match this session; provide explicit scope".into(), data: Some(serde_json::json!({"reason": "ambiguous_current_page", "session_id": session_id, "page_instance_ids": pages.iter().map(|page| &page.page_instance_id).collect::<Vec<_>>(), "fallback": "tool.observe" })) });
+            return ResponseBody::Err(RpcError {
+                code: ErrorCode::InvalidParams,
+                message: "multiple current Wiki pages match this session; provide explicit scope"
+                    .into(),
+                data: Some(
+                    serde_json::json!({"reason": "ambiguous_current_page", "session_id": session_id, "page_instance_ids": pages.iter().map(|page| &page.page_instance_id).collect::<Vec<_>>(), "fallback": "tool.observe" }),
+                ),
+            });
         }
         let page = pages.into_iter().next().expect("non-empty pages");
         let resolution = serde_json::json!({"mode": "current", "session_id": session_id});
         (page.page_instance_id, page.scope, resolution)
     };
-    if state.wiki.scoped_page(&page_id, &scope).is_none() { return wiki_scope_denied(); }
+    if state.wiki.scoped_page(&page_id, &scope).is_none() {
+        return wiki_scope_denied();
+    }
     match method {
-        Method::WikiStatus => ResponseBody::Ok(serde_json::json!({"enabled": true, "page": state.wiki.scoped_page(&page_id, &scope), "resolution": resolution})),
-        Method::WikiEvents => ResponseBody::Ok(serde_json::json!({"page_instance_id": page_id, "events": state.wiki.scoped_events(&page_id, &scope).unwrap_or_default(), "resolution": resolution})),
+        Method::WikiStatus => ResponseBody::Ok(
+            serde_json::json!({"enabled": true, "page": state.wiki.scoped_page(&page_id, &scope), "resolution": resolution}),
+        ),
+        Method::WikiEvents => ResponseBody::Ok(
+            serde_json::json!({"page_instance_id": page_id, "events": state.wiki.scoped_events(&page_id, &scope).unwrap_or_default(), "resolution": resolution}),
+        ),
         Method::WikiDelta => {
-            let Some(from_revision) = params.get("from_revision").and_then(Value::as_u64) else { return ResponseBody::Err(invalid_params("from_revision is required")); };
+            let Some(from_revision) = params.get("from_revision").and_then(Value::as_u64) else {
+                return ResponseBody::Err(invalid_params("from_revision is required"));
+            };
             match state.wiki.scoped_delta(&page_id, &scope, from_revision) {
                 Ok(delta) => ResponseBody::Ok(serde_json::to_value(delta).unwrap_or(Value::Null)),
-                Err(error) => ResponseBody::Err(RpcError { code: ErrorCode::InvalidParams, message: error.to_string(), data: Some(serde_json::json!({"fallback": "tool.observe"})) }),
+                Err(error) => ResponseBody::Err(RpcError {
+                    code: ErrorCode::InvalidParams,
+                    message: error.to_string(),
+                    data: Some(serde_json::json!({"fallback": "tool.observe"})),
+                }),
             }
         }
         Method::WikiView | Method::WikiRetrieve => {
-            let Some(read_state) = state.wiki.read_state(&page_id, &scope) else { return wiki_scope_denied(); };
+            let Some(read_state) = state.wiki.read_state(&page_id, &scope) else {
+                return wiki_scope_denied();
+            };
             let router = bsk_protocol::RetrievalRouter::default();
-            let query = params.get("query").cloned()
+            let query = params
+                .get("query")
+                .cloned()
                 .and_then(|value| serde_json::from_value(value).ok())
                 .unwrap_or_default();
             if method == Method::WikiView {
-                ResponseBody::Ok(serde_json::to_value(router.compile(&read_state, &query)).unwrap_or(Value::Null))
+                ResponseBody::Ok(
+                    serde_json::to_value(router.compile(&read_state, &query))
+                        .unwrap_or(Value::Null),
+                )
             } else {
-                ResponseBody::Ok(serde_json::to_value(router.route(&read_state, &query)).unwrap_or(Value::Null))
+                ResponseBody::Ok(
+                    serde_json::to_value(router.route(&read_state, &query)).unwrap_or(Value::Null),
+                )
             }
         }
-        _ => ResponseBody::Err(RpcError { code: ErrorCode::UnknownMethod, message: "not a Wiki read method".into(), data: None }),
+        _ => ResponseBody::Err(RpcError {
+            code: ErrorCode::UnknownMethod,
+            message: "not a Wiki read method".into(),
+            data: None,
+        }),
     }
 }
 
@@ -495,12 +564,28 @@ async fn resolve_default_session(
         )
         .await
         .map_err(map_start_error)?;
-        if state.leases.acquire(&session.browser_id.0, &session.id.0, None).is_err() {
-            let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+        if state
+            .leases
+            .acquire(&session.browser_id.0, &session.id.0, None)
+            .is_err()
+        {
+            let _ = stop_session(
+                &state.browsers,
+                &state.sessions,
+                &state.tool_queues,
+                &state.session_interrupts,
+                &session.id,
+                DEFAULT_SESSION_STOP_TIMEOUT,
+                None,
+            )
+            .await;
             return Err(RpcError {
                 code: ErrorCode::PermissionDenied,
                 message: "browser is already controlled by another active session".into(),
-                data: Some(serde_json::to_value(state.leases.status(&session.browser_id.0)).unwrap_or(Value::Null)),
+                data: Some(
+                    serde_json::to_value(state.leases.status(&session.browser_id.0))
+                        .unwrap_or(Value::Null),
+                ),
             });
         }
         state
@@ -558,11 +643,15 @@ async fn handle_tool_dispatch(
     };
     if method.requires_control_lease()
         && let Some(session) = state.sessions.get(&session_id)
-        && let Err(holder) = state.leases.require_or_reacquire(&session.browser_id.0, &session_id.0)
+        && let Err(holder) = state
+            .leases
+            .require_or_reacquire(&session.browser_id.0, &session_id.0)
     {
         return ResponseBody::Err(RpcError {
             code: ErrorCode::PermissionDenied,
-            message: "browser control lease is not held by this session; observe is still available".into(),
+            message:
+                "browser control lease is not held by this session; observe is still available"
+                    .into(),
             data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
         });
     }
@@ -1257,7 +1346,9 @@ pub(super) async fn handle_session_start(
         // the live session in its in-memory registry; unlike a normal tool
         // dispatch it may reacquire a missing lease record.
         if let Err(crate::daemon::lease::AcquireError::Held(holder)) =
-            state.leases.acquire(&existing.browser_id.0, &existing.id.0, None)
+            state
+                .leases
+                .acquire(&existing.browser_id.0, &existing.id.0, None)
         {
             return Err(RpcError {
                 code: ErrorCode::PermissionDenied,
@@ -1270,7 +1361,8 @@ pub(super) async fn handle_session_start(
             session_id: existing.id.0,
             browser_instance_id: existing.browser_id.0,
             agent_window_id: existing.agent_window_id,
-        }).unwrap_or(Value::Null));
+        })
+        .unwrap_or(Value::Null));
     }
     match super::sessions::start_session_recoverable(
         &state.browsers,
@@ -1289,8 +1381,21 @@ pub(super) async fn handle_session_start(
     .await
     {
         Ok(session) => {
-            if let Err(crate::daemon::lease::AcquireError::Held(holder)) = state.leases.acquire(&session.browser_id.0, &session.id.0, None) {
-                let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+            if let Err(crate::daemon::lease::AcquireError::Held(holder)) =
+                state
+                    .leases
+                    .acquire(&session.browser_id.0, &session.id.0, None)
+            {
+                let _ = stop_session(
+                    &state.browsers,
+                    &state.sessions,
+                    &state.tool_queues,
+                    &state.session_interrupts,
+                    &session.id,
+                    DEFAULT_SESSION_STOP_TIMEOUT,
+                    None,
+                )
+                .await;
                 return Err(RpcError {
                     code: ErrorCode::PermissionDenied,
                     message: "browser is already controlled by another active session".into(),
@@ -1406,7 +1511,10 @@ async fn handle_session_stop(
             });
         }
     };
-    let browser_id = state.sessions.get(&session_id).map(|session| session.browser_id.0);
+    let browser_id = state
+        .sessions
+        .get(&session_id)
+        .map(|session| session.browser_id.0);
     match stop_session(
         &state.browsers,
         &state.sessions,
@@ -1416,7 +1524,7 @@ async fn handle_session_stop(
         DEFAULT_SESSION_STOP_TIMEOUT,
         Some(cancel),
     )
-        .await
+    .await
     {
         Ok(stop) => {
             if let Some(browser_id) = browser_id.as_deref() {
@@ -1580,10 +1688,15 @@ async fn handle_session_stop_all(
 }
 
 fn handle_lease(state: &Arc<DaemonState>, method: Method, params: Value) -> ResponseBody {
-    let browser = params.get("browser_instance_id").and_then(Value::as_str).unwrap_or("");
+    let browser = params
+        .get("browser_instance_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let owner = params.get("owner").and_then(Value::as_str).unwrap_or("");
     if browser.is_empty() || (owner.is_empty() && method != Method::LeaseStatus) {
-        return ResponseBody::Err(invalid_params("lease requires browser_instance_id and owner"));
+        return ResponseBody::Err(invalid_params(
+            "lease requires browser_instance_id and owner",
+        ));
     }
     let ttl = params.get("ttl_ms").and_then(Value::as_u64);
     match method {
@@ -1599,17 +1712,29 @@ fn handle_lease(state: &Arc<DaemonState>, method: Method, params: Value) -> Resp
             let token = params.get("token").and_then(Value::as_str).unwrap_or("");
             match state.leases.renew(browser, owner, token, ttl) {
                 Ok(status) => ResponseBody::Ok(serde_json::to_value(status).unwrap_or(Value::Null)),
-                Err(message) => ResponseBody::Err(RpcError { code: ErrorCode::PermissionDenied, message, data: Some(serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null)) }),
+                Err(message) => ResponseBody::Err(RpcError {
+                    code: ErrorCode::PermissionDenied,
+                    message,
+                    data: Some(
+                        serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null),
+                    ),
+                }),
             }
         }
         Method::LeaseRelease => {
             let token = params.get("token").and_then(Value::as_str);
             match state.leases.release(browser, owner, token) {
                 Ok(()) => ResponseBody::Ok(serde_json::json!({"released": true})),
-                Err(message) => ResponseBody::Err(RpcError { code: ErrorCode::PermissionDenied, message, data: None }),
+                Err(message) => ResponseBody::Err(RpcError {
+                    code: ErrorCode::PermissionDenied,
+                    message,
+                    data: None,
+                }),
             }
         }
-        Method::LeaseStatus => ResponseBody::Ok(serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null)),
+        Method::LeaseStatus => ResponseBody::Ok(
+            serde_json::to_value(state.leases.status(browser)).unwrap_or(Value::Null),
+        ),
         _ => ResponseBody::Err(invalid_params("not a lease method")),
     }
 }
@@ -1636,19 +1761,35 @@ async fn handle_browser_list(state: &Arc<DaemonState>, params: Value) -> Result<
     Ok(serde_json::to_value(BrowserListResult { browsers }).unwrap_or(Value::Null))
 }
 
-async fn handle_session_history(state: &Arc<DaemonState>, params: Value) -> Result<Value, RpcError> {
-    let session_name = params.get("session_id").and_then(Value::as_str).unwrap_or(DEFAULT_SESSION);
+async fn handle_session_history(
+    state: &Arc<DaemonState>,
+    params: Value,
+) -> Result<Value, RpcError> {
+    let session_name = params
+        .get("session_id")
+        .and_then(Value::as_str)
+        .unwrap_or(DEFAULT_SESSION);
     let session_id = state
         .logical_sessions
         .resolve(&state.sessions, session_name)
         .ok_or_else(|| invalid_params("session is not active or has no recoverable history"))?;
-    let session = state.sessions.get(&session_id).ok_or_else(|| invalid_params("session is not active"))?;
-    let limit = params.get("limit").and_then(Value::as_u64).unwrap_or(20).min(50) as usize;
-    state.audit.history(&session.browser_id.0, &session_id.0, limit).map_err(|error| RpcError {
-        code: ErrorCode::ProtocolError,
-        message: format!("could not read session history: {error}"),
-        data: None,
-    })
+    let session = state
+        .sessions
+        .get(&session_id)
+        .ok_or_else(|| invalid_params("session is not active"))?;
+    let limit = params
+        .get("limit")
+        .and_then(Value::as_u64)
+        .unwrap_or(20)
+        .min(50) as usize;
+    state
+        .audit
+        .history(&session.browser_id.0, &session_id.0, limit)
+        .map_err(|error| RpcError {
+            code: ErrorCode::ProtocolError,
+            message: format!("could not read session history: {error}"),
+            data: None,
+        })
 }
 
 // ----- Test-helper IpcServer wrapper around the transport layer -----
@@ -2111,9 +2252,9 @@ pub use windows::{bind, serve};
 #[cfg(all(test, unix))]
 mod tests {
     use super::*;
-    use bsk_protocol::{Frame, Method, RequestFrame};
     use crate::daemon::start::DaemonConfig;
     use crate::daemon::wiki::ShadowWikiStore;
+    use bsk_protocol::{Frame, Method, RequestFrame};
     use tempfile::TempDir;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::UnixStream;
@@ -2471,7 +2612,10 @@ mod tests {
     fn wiki_capabilities_are_independent_metadata_only() {
         let value = wiki_capabilities();
         assert_eq!(value["schema_version"], bsk_protocol::WIKI_SCHEMA_VERSION);
-        assert_eq!(value["min_compatible_schema"], bsk_protocol::WIKI_SCHEMA_VERSION);
+        assert_eq!(
+            value["min_compatible_schema"],
+            bsk_protocol::WIKI_SCHEMA_VERSION
+        );
         assert!(value["capabilities"].is_array());
         assert!(value.get("pages").is_none());
         assert!(value.get("events").is_none());
