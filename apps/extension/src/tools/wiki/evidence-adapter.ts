@@ -87,11 +87,14 @@ export interface SemanticDelta {
   fallback_reason: string | null;
 }
 
-const SECRET_KEYS = /^(?:password|passcode|token|secret|cookie|authorization|credential|file_contents?|script(?:_body)?|screenshot|image)$/i;
+const SECRET_KEYS =
+  /^(?:password|passcode|token|secret|cookie|authorization|credential|file_contents?|script(?:_body)?|screenshot|image)$/i;
 const URL_KEYS = /^(?:url|href|src|document_url)$/i;
 
 function defaultId(): string {
-  return globalThis.crypto?.randomUUID?.() ?? `wiki-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return (
+    globalThis.crypto?.randomUUID?.() ?? `wiki-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
 }
 
 function originOnly(value: string, retainPath: boolean): string {
@@ -120,11 +123,16 @@ function redact(value: unknown, retainPath: boolean, key?: string): unknown {
   return String(value);
 }
 
-function boundedPayload(value: unknown, retainPath: boolean): { payload: Record<string, unknown>; truncated: boolean } {
+function boundedPayload(
+  value: unknown,
+  retainPath: boolean,
+): { payload: Record<string, unknown>; truncated: boolean } {
   const safe = redact(value, retainPath);
-  const candidate = safe && typeof safe === "object" && !Array.isArray(safe) ? safe : { value: safe };
+  const candidate =
+    safe && typeof safe === "object" && !Array.isArray(safe) ? safe : { value: safe };
   const encoded = new TextEncoder().encode(JSON.stringify(candidate));
-  if (encoded.byteLength <= MAX_EVENT_BYTES) return { payload: candidate as Record<string, unknown>, truncated: false };
+  if (encoded.byteLength <= MAX_EVENT_BYTES)
+    return { payload: candidate as Record<string, unknown>, truncated: false };
   return {
     payload: { redacted: true, reason: "payload_limit" },
     truncated: true,
@@ -162,16 +170,21 @@ export class ShadowEvidenceAdapter {
       source: input.source,
       payload: bounded.payload,
       predecessor_event_id: this.lastEventId.get(input.page_instance_id) ?? null,
-      completeness: overflow || bounded.truncated ? "full_refresh_required" : input.completeness ?? "complete",
+      completeness:
+        overflow || bounded.truncated
+          ? "full_refresh_required"
+          : (input.completeness ?? "complete"),
     };
     if (!overflow) {
       events.push(event);
       this.eventsByPage.set(input.page_instance_id, events);
       this.lastEventId.set(input.page_instance_id, event.event_id);
-      const regionId = typeof input.payload === "object" && input.payload !== null && !Array.isArray(input.payload)
-        ? (input.payload as Record<string, unknown>).region_id
-        : null;
-      if (input.kind === "mutation") this.markDirty(input.page_instance_id, typeof regionId === "string" ? regionId : null);
+      const regionId =
+        typeof input.payload === "object" && input.payload !== null && !Array.isArray(input.payload)
+          ? (input.payload as Record<string, unknown>).region_id
+          : null;
+      if (input.kind === "mutation")
+        this.markDirty(input.page_instance_id, typeof regionId === "string" ? regionId : null);
     }
     return event;
   }
@@ -203,7 +216,11 @@ export class ShadowEvidenceAdapter {
   }
 
   /** Apply a bounded semantic snapshot and emit a conservative delta. */
-  applySnapshot(pageInstanceId: string, records: readonly SemanticRecord[], fromRevision = 0): SemanticDelta {
+  applySnapshot(
+    pageInstanceId: string,
+    records: readonly SemanticRecord[],
+    fromRevision = 0,
+  ): SemanticDelta {
     const previous = this.snapshots.get(pageInstanceId) ?? new Map<string, SemanticRecord>();
     const next = new Map<string, SemanticRecord>();
     let reason = this.incomplete.get(pageInstanceId) ?? null;
@@ -229,13 +246,15 @@ export class ShadowEvidenceAdapter {
       for (const [id, record] of next) {
         const before = previous.get(id);
         if (!before) added.push(record);
-        else if (JSON.stringify(before) !== JSON.stringify(record)) changed.push({ before, after: record, evidence: [] });
+        else if (JSON.stringify(before) !== JSON.stringify(record))
+          changed.push({ before, after: record, evidence: [] });
       }
       for (const id of previous.keys()) if (!next.has(id)) removed.push(id);
       this.snapshots.set(pageInstanceId, next);
     }
     const dirty = [...(this.dirtyRegions.get(pageInstanceId) ?? [])];
-    const nextRevision = Math.max(fromRevision, this.revisions.get(pageInstanceId) ?? fromRevision) + 1;
+    const nextRevision =
+      Math.max(fromRevision, this.revisions.get(pageInstanceId) ?? fromRevision) + 1;
     this.revisions.set(pageInstanceId, nextRevision);
     const delta: SemanticDelta = {
       page_instance_id: pageInstanceId,
@@ -259,7 +278,9 @@ export class ShadowEvidenceAdapter {
    * passive read; callers must not use it to trigger reconciliation.
    */
   snapshotRecords(pageInstanceId: string): readonly SemanticRecord[] {
-    return [...(this.snapshots.get(pageInstanceId)?.values() ?? [])].map((record) => ({ ...record }));
+    return [...(this.snapshots.get(pageInstanceId)?.values() ?? [])].map((record) => ({
+      ...record,
+    }));
   }
 
   /** Apply only one dirty region while retaining the rest of the accepted projection. */
@@ -269,7 +290,9 @@ export class ShadowEvidenceAdapter {
     records: readonly SemanticRecord[],
     fromRevision = 0,
   ): SemanticDelta {
-    const retained = this.snapshotRecords(pageInstanceId).filter((record) => record.region_id !== regionId);
+    const retained = this.snapshotRecords(pageInstanceId).filter(
+      (record) => record.region_id !== regionId,
+    );
     return this.applySnapshot(pageInstanceId, [...retained, ...records], fromRevision);
   }
 
