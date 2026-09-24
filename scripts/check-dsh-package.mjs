@@ -33,6 +33,8 @@ try {
       },
     }),
   );
+  // npm returns either a one-element array or a package-name keyed object;
+  // accept both shapes, including the direct archive object used by newer npm.
   const archive = Array.isArray(packResult)
     ? packResult[0]
     : packResult.filename
