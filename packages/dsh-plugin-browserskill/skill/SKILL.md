@@ -5,14 +5,14 @@ description: Automate the user's logged-in Chromium through this plugin's inject
 
 # browser-skill for DeepSeek Harness
 
-All browser work must use the injected tools directly, in an Agent Window with existing logins.
-Do not control the browser through another process. Use the loaded action schemas for parameters.
+Use injected tools directly in an Agent Window with existing logins. Use loaded
+action schemas; do not control the browser through another process.
 Never extract credentials, cookies, tokens, or other secrets.
 
 ## Before acting
 
-If a browser profile is required, read [tabs and profiles](references/tabs-and-profiles.md)
-before starting. Verify its instance mapping and bind every new session explicitly.
+If a profile is required, read [tabs and profiles](references/tabs-and-profiles.md)
+first. Verify its mapping and bind every new session.
 Never omit `browser` or substitute another instance to recover.
 Borrow confirmation and human help follow the extension's Automation settings;
 never change them or switch backends to bypass a prompt.

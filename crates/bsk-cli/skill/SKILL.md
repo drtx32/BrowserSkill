@@ -71,6 +71,8 @@ authority.
    page/origin identity changes, or stale/ambiguous invalidation. Check an
    ambiguous result once, inspect unknown effects before retrying, and stop when
    success is visible. Follow trace semantic targets, not old refs.
+   Same-page stable logical refs automatically reacquire when available. If
+   another controller holds the lease, stop acting rather than refreshing.
 4. Keep `default` open across turns. Stop only for explicit end/reset or an
    unrecoverable failure; stopping returns borrowed tabs, which remain open.
 
