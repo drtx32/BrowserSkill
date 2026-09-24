@@ -47,6 +47,7 @@ import type {
 import { isRequestFrame } from "@/transport/types";
 import { auditContext } from "./audit-context";
 import { prepareBackgroundExecution } from "./background-execution";
+import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { handleConsole } from "./console";
 import { handleDebug } from "./debug";
 import { handleDownload } from "./download";
@@ -563,13 +564,20 @@ export class ToolDispatcher {
           signal,
         );
       case "tool.snapshot":
+        console.debug("[bsk snapshot routing]", { path: "handleSnapshot" });
         return this.withHoverReassert(
           req.params as SnapshotParams,
           () =>
             handleSnapshot(
               this.sessions,
               req.params as SnapshotParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsCaptureApi } : undefined,
+              this.cdp
+                ? {
+                    cdp: this.cdp,
+                    tabsApi: chromeTabsCaptureApi,
+                    browserNavigation: chromeBrowserNavigationApi,
+                  }
+                : undefined,
               signal,
             ),
           {},

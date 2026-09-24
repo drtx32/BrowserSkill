@@ -222,7 +222,6 @@ async fn tab_list_round_trips_through_ipc_queue_and_ws() {
     assert_eq!(result.tabs[0].scope, Some(TabScope::User));
     handle.shutdown().await;
 }
-
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn screenshot_returns_image_base64_with_dimensions() {
     let (handle, sock) = spawn_daemon().await;
@@ -444,6 +443,8 @@ async fn snapshot_returns_text_and_ref_count() {
                 tab_id: 13,
                 truncated: false,
                 dialogs: vec![],
+                fields: vec![],
+                revision: None,
             })
             .unwrap(),
         )

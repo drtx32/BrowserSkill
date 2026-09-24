@@ -52,6 +52,7 @@ import type {
   SnapshotParams,
   SnapshotResult,
 } from "@/transport/types";
+import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { attachDialogs, markDialogCursor } from "./dialogs";
 import { rpcError } from "./errors";
 import { resolveNodeGeometry } from "./frame-geometry";
@@ -87,6 +88,7 @@ import {
   resolveSemanticGraph,
   type SemanticAxNode,
 } from "./vom/semantic-graph";
+import { readCanonicalSnapshot } from "./wiki/canonical-snapshot";
 
 // ---------------------------------------------------------------------------
 // Shared helpers (legacy aliases — observation.ts kept exporting these
@@ -755,6 +757,7 @@ export interface SnapshotDeps {
     query(q: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]>;
   };
   conditionalSurfaceProbe?: boolean;
+  browserNavigation?: Pick<typeof chromeBrowserNavigationApi, "getFrame">;
   hoverProbeBypassOverlay?: (tabId: number, enabled: boolean) => Promise<void>;
 }
 
@@ -764,6 +767,7 @@ function getDefaultDeps(): SnapshotDeps {
     defaultDeps = {
       cdp: new ChromiumCdp(),
       tabsApi: { get: (tabId) => chrome.tabs.get(tabId), query: (q) => chrome.tabs.query(q) },
+      browserNavigation: chromeBrowserNavigationApi,
     };
   }
   return defaultDeps;
@@ -1207,11 +1211,54 @@ async function handleVomObservation(
       (token) => `@${refMapping.get(token.slice(1)) ?? token.slice(1)}`,
     );
     for (const ref of observation.refs) ref.ref = refMapping.get(ref.ref) ?? ref.ref;
+    const documentId =
+      toolName === "snapshot"
+        ? (await deps.browserNavigation?.getFrame(target.tabId))?.documentId
+        : undefined;
+    // Some Chrome-compatible tab providers omit `url` from the resolved tab
+    // even though a fresh tabs.get includes it. The canonical projection must
+    // use the same live tab identity as the observation, so recover that URL
+    // before deciding whether the typed snapshot can be attached.
+    const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
+    const origin = (() => {
+      try {
+        return new URL(targetUrl ?? "").origin;
+      } catch {
+        return "";
+      }
+    })();
+    const canonical =
+      toolName === "snapshot" && origin
+        ? readCanonicalSnapshot({
+            sessionId: ctx.sessionId,
+            browserId: `window:${ctx.agentWindowId}`,
+            tabId: target.tabId,
+            origin,
+            documentId,
+            revision: ctx.refStore.documentRevision(target.tabId),
+            trigger: params.trigger,
+            fromRevision:
+              typeof params.revision === "number"
+                ? params.revision
+                : typeof params.revision === "string" && /^\d+$/.test(params.revision)
+                  ? Number.parseInt(params.revision, 10)
+                  : undefined,
+            refs: observation.refs,
+          })
+        : undefined;
+    console.debug("[bsk handleVomObservation]", {
+      documentId,
+      origin,
+      canonical,
+      hasFields: !!canonical?.fields,
+      fieldCount: canonical?.fields?.length,
+    });
     return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
       text,
       ref_count: observation.refs.length,
       tab_id: target.tabId,
       truncated: observation.truncated,
+      ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
       ...(toolName === "observe" && observation.virtualizedLists?.length
         ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
         : {}),
