@@ -564,6 +564,7 @@ export class ToolDispatcher {
           signal,
         );
       case "tool.snapshot":
+        console.debug("[bsk snapshot routing]", { path: "handleSnapshot" });
         return this.withHoverReassert(
           req.params as SnapshotParams,
           () =>
