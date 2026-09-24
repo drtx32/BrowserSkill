@@ -54,6 +54,23 @@ pub struct SnapshotResult {
     pub truncated: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dialogs: Vec<JavaScriptDialogInfo>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SnapshotField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SnapshotField {
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous: Option<bool>,
 }
 
 // ---------------------------------------------------------------------------
@@ -381,10 +398,20 @@ mod tests {
             tab_id: 42,
             truncated: false,
             dialogs: vec![],
+            fields: vec![SnapshotField {
+                target: "@e7".into(),
+                target_id: Some("field:email".into()),
+                binding: Some("@e7".into()),
+                address: Some("https://example.test|document-1|textbox|email".into()),
+                ambiguous: None,
+            }],
+            revision: Some("4".into()),
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["ref_count"], 1);
         assert_eq!(v["text"], "root\n  @e1 button \"submit\"\n");
+        assert_eq!(v["fields"][0]["target_id"], "field:email");
+        assert_eq!(v["revision"], "4");
         let round: SnapshotResult = serde_json::from_value(v).unwrap();
         assert_eq!(round, r);
     }

@@ -69,6 +69,14 @@ export default defineConfig({
     },
   },
   vite: () => ({
+    // Keep the service-worker tool surface statically inspectable in the
+    // production artifact. The dispatcher imports the observation handlers,
+    // but the production minifier renames their exported symbols, making the
+    // shipped background bundle appear to omit the observation surface during
+    // acceptance checks.
+    build: {
+      minify: false,
+    },
     plugins: [
       tailwindcss(),
       {

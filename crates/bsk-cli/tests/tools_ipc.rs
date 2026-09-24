@@ -444,6 +444,8 @@ async fn snapshot_returns_text_and_ref_count() {
                 tab_id: 13,
                 truncated: false,
                 dialogs: vec![],
+                fields: vec![],
+                revision: None,
             })
             .unwrap(),
         )
