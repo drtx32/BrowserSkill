@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  canonicalSemanticAddress,
   calibrateFuzzyPolicy,
+  canonicalSemanticAddress,
   DEFAULT_FUZZY_POLICY,
   FUZZY_CALIBRATION_FIXTURES,
   resolveSemanticTarget,
