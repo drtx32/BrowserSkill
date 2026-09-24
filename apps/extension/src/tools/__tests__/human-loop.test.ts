@@ -321,10 +321,7 @@ describe("handleRequestHelp", () => {
     );
 
     expect(res).toMatchObject({ outcome: "continued", tab_id: 5 });
-    expect(cdpSend).toHaveBeenCalledWith(
-      expect.any(Number),
-      "Accessibility.getFullAXTree",
-    );
+    expect(cdpSend).toHaveBeenCalledWith(expect.any(Number), "Accessibility.getFullAXTree");
     expect(cdpSend).toHaveBeenCalledWith(
       expect.any(Number),
       "DOMSnapshot.captureSnapshot",
@@ -332,7 +329,11 @@ describe("handleRequestHelp", () => {
     );
     expect(res).toMatchObject({
       goal_verified: false,
-      state_diff: { changed: expect.any(Array), before: expect.any(Object), after: expect.any(Object) },
+      state_diff: {
+        changed: expect.any(Array),
+        before: expect.any(Object),
+        after: expect.any(Object),
+      },
     });
   });
 
