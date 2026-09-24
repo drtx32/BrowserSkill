@@ -628,10 +628,10 @@ mod tests {
 
     use super::*;
     use bsk_protocol::tools::{
-        NavigationCause, PageRefV2 as PageRef, RecorderInfo, StepCommonV3 as StepCommon,
-        StepResultV3 as StepResult, StepV3 as Step, StopReason, TRACE_VERSION_V2, TRACE_VERSION_V3,
-        RecordStopResult, TraceEntry, TraceMetricsV3, TraceStateV3, TraceV2, TraceV3,
-        VOM_FORMAT_VERSION,
+        NavigationCause, PageRefV2 as PageRef, RecordStopResult, RecorderInfo,
+        StepCommonV3 as StepCommon, StepResultV3 as StepResult, StepV3 as Step, StopReason,
+        TRACE_VERSION_V2, TRACE_VERSION_V3, TraceEntry, TraceMetricsV3, TraceStateV3, TraceV2,
+        TraceV3, VOM_FORMAT_VERSION,
     };
 
     fn sample_trace(state_id: &str, body: &str) -> TraceV3 {

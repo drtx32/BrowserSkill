@@ -331,7 +331,13 @@ pub fn start_session(sock: PathBuf, opts: SessionStartOptions) -> Result<StartRe
 /// Ensure the stable default session, reusing its active physical session
 /// when possible and creating one only when the daemon has lost it.
 pub fn ensure_session(sock: PathBuf, opts: SessionStartOptions) -> Result<StartReply, CliError> {
-    start_session(sock, SessionStartOptions { reuse_default: true, ..opts })
+    start_session(
+        sock,
+        SessionStartOptions {
+            reuse_default: true,
+            ..opts
+        },
+    )
 }
 
 /// Stop a single session by id.
@@ -607,16 +613,40 @@ fn run_list(sock: PathBuf, format: Format) -> Result<(), CliError> {
 
 fn run_history(sock: PathBuf, args: SessionHistoryArgs, format: Format) -> Result<(), CliError> {
     #[derive(Serialize)]
-    struct Params { session_id: String, limit: u32 }
-    let reply: serde_json::Value = call(sock, Method::SessionHistory, Some(Params { session_id: args.session_id, limit: args.limit }), Duration::from_secs(5))?;
+    struct Params {
+        session_id: String,
+        limit: u32,
+    }
+    let reply: serde_json::Value = call(
+        sock,
+        Method::SessionHistory,
+        Some(Params {
+            session_id: args.session_id,
+            limit: args.limit,
+        }),
+        Duration::from_secs(5),
+    )?;
     match format {
-        Format::Json => println!("{}", serde_json::to_string_pretty(&reply).map_err(|e| CliError::Local(anyhow::anyhow!(e)))?),
+        Format::Json => println!(
+            "{}",
+            serde_json::to_string_pretty(&reply)
+                .map_err(|e| CliError::Local(anyhow::anyhow!(e)))?
+        ),
         Format::Human => {
-            let events = reply.get("events").and_then(|v| v.as_array()).cloned().unwrap_or_default();
-            if events.is_empty() { println!("(no session history)"); }
+            let events = reply
+                .get("events")
+                .and_then(|v| v.as_array())
+                .cloned()
+                .unwrap_or_default();
+            if events.is_empty() {
+                println!("(no session history)");
+            }
             for event in events {
                 let at = event.get("at").and_then(|v| v.as_i64()).unwrap_or_default();
-                let kind = event.get("kind").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let kind = event
+                    .get("kind")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 println!("{at}  {kind}");
             }
         }

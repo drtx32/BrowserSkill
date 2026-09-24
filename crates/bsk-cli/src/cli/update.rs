@@ -1059,10 +1059,7 @@ mod tests {
         };
         let script = windows_replacement_script(Some(&args), 120);
         assert!(script.is_ascii());
-        assert!(
-            script
-                .contains("daemon start --port 54321 --daemon-idle 75000ms")
-        );
+        assert!(script.contains("daemon start --port 54321 --daemon-idle 75000ms"));
         assert!(!windows_replacement_script(None, 120).contains("daemon start"));
     }
 
