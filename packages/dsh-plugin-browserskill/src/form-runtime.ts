@@ -24,7 +24,15 @@ export interface FormField {
 
 export interface FormMaterialization {
   revision?: string | number;
-  fields?: readonly { target: string; protected?: boolean; ambiguous?: boolean }[];
+  fields?: readonly {
+    target: string;
+    target_id?: string;
+    binding?: string;
+    address?: string;
+    /** Backward-compatible adapter input; production snapshot metadata omits this. */
+    protected?: boolean;
+    ambiguous?: boolean;
+  }[];
 }
 
 export interface FormMutationResult {
@@ -91,7 +99,19 @@ export async function runFormRuntime(
     (materialized.fields ?? []).filter((field) => field.ambiguous).map((field) => field.target),
   );
   const ambiguous = fields
-    .filter((field) => protectedTargets.has(field.target) || ambiguousTargets.has(field.target))
+    .filter((field) => {
+      const candidates = (materialized.fields ?? []).filter(
+        (candidate) =>
+          candidate.target === field.target ||
+          candidate.target_id === field.target ||
+          candidate.binding === field.target,
+      );
+      return (
+        protectedTargets.has(field.target) ||
+        ambiguousTargets.has(field.target) ||
+        candidates.some((candidate) => candidate.protected || candidate.ambiguous)
+      );
+    })
     .map((field) => field.target);
   if (ambiguous.length > 0)
     return {
@@ -140,7 +160,16 @@ export async function runFormRuntime(
     }
   }
   const newlyRequired = (materialized.fields ?? [])
-    .filter((field) => field.target && !fields.some((input) => input.target === field.target))
+    .filter(
+      (field) =>
+        field.target &&
+        !fields.some(
+          (input) =>
+            input.target === field.target ||
+            input.target === field.target_id ||
+            input.target === field.binding,
+        ),
+    )
     .map((field) => field.target);
   return {
     tabId: results[0]?.tabId ?? 0,

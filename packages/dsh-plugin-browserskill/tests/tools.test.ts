@@ -563,6 +563,33 @@ describe("multi-session behavior", () => {
     expect(calls[1].args).toEqual(["snapshot", "--session", "s1"]);
   });
 
+  it("preserves canonical snapshot fields and revision in the typed wire projection", async () => {
+    const { tools } = setup({
+      "session start": START_REPLY("s1"),
+      snapshot: {
+        ...SNAPSHOT_REPLY,
+        fields: [
+          {
+            target: "@e1",
+            target_id: "field:email",
+            binding: "@e1",
+            address: "https://example.test|document-1|textbox|email",
+          },
+        ],
+        revision: "document-1",
+      },
+    });
+    await startSession(tools);
+    const value = (await tools.get("inspect.snapshot")?.execute({}, makeExec())) as {
+      fields: Array<{ target_id?: string; binding?: string }>;
+      revision: string;
+    };
+    expect(value.fields).toEqual([
+      expect.objectContaining({ target_id: "field:email", binding: "@e1" }),
+    ]);
+    expect(value.revision).toBe("document-1");
+  });
+
   it("an explicit owned session wins and becomes the new current session", async () => {
     const { tools, calls, registry } = setup({
       "session start": seq([START_REPLY("s1"), START_REPLY("s2")]),
