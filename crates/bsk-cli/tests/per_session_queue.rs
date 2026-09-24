@@ -252,6 +252,21 @@ async fn ipc_session_start(sock: &PathBuf) -> String {
     r.session_id
 }
 
+async fn ipc_observer_session_start(sock: &PathBuf) -> String {
+    let mut ipc = bsk::ipc_client::IpcClient::connect(sock).await.unwrap();
+    let r: StartReply = ipc
+        .call(
+            "qs",
+            Method::SessionStart,
+            Some(json!({"observer": true})),
+            Duration::from_secs(5),
+        )
+        .await
+        .unwrap()
+        .expect("observer session.start ok");
+    r.session_id
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn same_session_dispatches_run_after_previous_completes() {
     let (handle, sock) = spawn_daemon().await;
@@ -521,8 +536,8 @@ async fn dispatches_for_different_sessions_do_not_block_each_other() {
         reply_rx,
     ));
 
-    let session_a = ipc_session_start(&sock).await;
-    let session_b = ipc_session_start(&sock).await;
+    let session_a = ipc_observer_session_start(&sock).await;
+    let session_b = ipc_observer_session_start(&sock).await;
     assert_ne!(session_a, session_b);
     let state = handle.state();
 

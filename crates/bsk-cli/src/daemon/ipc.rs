@@ -1103,6 +1103,11 @@ struct CliSessionStartParams {
     pub focused: Option<bool>,
     #[serde(default)]
     pub reuse_default: bool,
+    /// Admit a second session as a passive observer when the browser is
+    /// already controlled by another local session. Control sessions remain
+    /// fail-closed on a held lease.
+    #[serde(default)]
+    pub observer: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1218,6 +1223,7 @@ pub(super) async fn handle_session_start(
             height: None,
             focused: None,
             reuse_default: false,
+            observer: false,
         }
     } else {
         serde_json::from_value(params).map_err(|err| RpcError {
@@ -1290,12 +1296,21 @@ pub(super) async fn handle_session_start(
     {
         Ok(session) => {
             if let Err(crate::daemon::lease::AcquireError::Held(holder)) = state.leases.acquire(&session.browser_id.0, &session.id.0, None) {
-                let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
-                return Err(RpcError {
-                    code: ErrorCode::PermissionDenied,
-                    message: "browser is already controlled by another active session".into(),
-                    data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
-                });
+                let held_by_local_session = state
+                    .sessions
+                    .snapshot()
+                    .into_iter()
+                    .any(|controller| controller.browser_id == session.browser_id && controller.id != session.id);
+                if !params.observer || !held_by_local_session {
+                    let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+                    return Err(RpcError {
+                        code: ErrorCode::PermissionDenied,
+                        message: "browser is already controlled by another active session".into(),
+                        data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
+                    });
+                }
+                // Only an explicitly observer session may share a browser;
+                // control sessions remain mutually exclusive.
             }
             if let Err(error) = state.logical_sessions.set_default(&session.id) {
                 warn!(%error, "could not persist current logical session");
