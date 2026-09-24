@@ -315,8 +315,10 @@ impl Method {
     /// Browser writes and transient probes require the session's short-lived
     /// control lease. Passive observation remains available to other agents.
     pub fn requires_control_lease(&self) -> bool {
-        matches!(self.effect(), MethodEffect::BrowserMutation | MethodEffect::TransientInput)
-            && !matches!(self, Method::ToolObserve)
+        matches!(
+            self.effect(),
+            MethodEffect::BrowserMutation | MethodEffect::TransientInput
+        ) && !matches!(self, Method::ToolObserve)
     }
 }
 
@@ -478,7 +480,14 @@ mod tests {
 
     #[test]
     fn wiki_reads_are_passive_and_do_not_require_a_lease() {
-        for method in [Method::WikiCapabilities, Method::WikiStatus, Method::WikiEvents, Method::WikiDelta, Method::WikiView, Method::WikiRetrieve] {
+        for method in [
+            Method::WikiCapabilities,
+            Method::WikiStatus,
+            Method::WikiEvents,
+            Method::WikiDelta,
+            Method::WikiView,
+            Method::WikiRetrieve,
+        ] {
             assert_eq!(method.effect(), MethodEffect::PassiveRead);
             assert!(!method.is_mutating());
             assert!(!method.requires_control_lease());

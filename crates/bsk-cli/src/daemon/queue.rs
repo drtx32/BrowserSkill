@@ -335,7 +335,7 @@ impl ToolQueueRegistry {
             });
             (entry.sender.clone(), Arc::clone(&entry.state))
         };
-        let outcome = dispatch_with_sender(
+        dispatch_with_sender(
             sender,
             state,
             sid.clone(),
@@ -347,8 +347,7 @@ impl ToolQueueRegistry {
             None,
             CANCEL_CLEANUP_TIMEOUT,
         )
-        .await;
-        outcome
+        .await
     }
 
     pub fn activity(&self, sid: &SessionId) -> Result<DebugActivity, DispatchError> {

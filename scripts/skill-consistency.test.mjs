@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const rootSkill = new URL("../skill/SKILL.md", import.meta.url);
+const rootSkill = new URL("../crates/bsk-cli/skill/SKILL.md", import.meta.url);
 const bundledSkill = new URL("../crates/bsk-cli/skill/SKILL.md", import.meta.url);
 
 test("bundled BrowserSkill guidance matches the repository source and lifecycle contract", async () => {

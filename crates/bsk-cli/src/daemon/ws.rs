@@ -525,11 +525,7 @@ async fn handle_inbound_text(state: &Arc<DaemonState>, client: &Arc<BrowserClien
     }
 }
 
-fn handle_session_activity(
-    state: &DaemonState,
-    browser: &BrowserId,
-    payload: &serde_json::Value,
-) {
+fn handle_session_activity(state: &DaemonState, browser: &BrowserId, payload: &serde_json::Value) {
     #[derive(serde::Deserialize)]
     struct Activity {
         session_id: String,
@@ -915,7 +911,10 @@ mod session_user_interrupt_tests {
             "owning browser may close its own session"
         );
         assert!(
-            state.leases.acquire(&owner.0, "reconnected-session", Some(5_000)).is_ok(),
+            state
+                .leases
+                .acquire(&owner.0, "reconnected-session", Some(5_000))
+                .is_ok(),
             "Agent-Window close must release the closed session lease"
         );
     }
