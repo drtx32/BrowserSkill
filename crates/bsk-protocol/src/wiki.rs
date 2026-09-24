@@ -20,11 +20,27 @@ pub struct WikiScope {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum Completeness { Complete, Partial, Stale, Unknown, Overflow, Ambiguous, FullRefreshRequired }
+pub enum Completeness {
+    Complete,
+    Partial,
+    Stale,
+    Unknown,
+    Overflow,
+    Ambiguous,
+    FullRefreshRequired,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum RecordStatus { Active, Removed, Current, Stale, Superseded, Uncertain, Invalidated }
+pub enum RecordStatus {
+    Active,
+    Removed,
+    Current,
+    Stale,
+    Superseded,
+    Uncertain,
+    Invalidated,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct PageInstance {
@@ -42,10 +58,24 @@ pub struct PageInstance {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum RegionKind { Landmark, Form, List, ListItem, Dialog, Table, Content, Custom }
+pub enum RegionKind {
+    Landmark,
+    Form,
+    List,
+    ListItem,
+    Dialog,
+    Table,
+    Content,
+    Custom,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct Bounds { pub x: f64, pub y: f64, pub width: f64, pub height: f64 }
+pub struct Bounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct Region {
@@ -65,7 +95,11 @@ pub struct Region {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum RefLifecycle { Live, Stale, Invalidated }
+pub enum RefLifecycle {
+    Live,
+    Stale,
+    Invalidated,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct WikiRef {
@@ -81,11 +115,27 @@ pub struct WikiRef {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EventKind { Observation, Mutation, Navigation, Action, Popup, Ownership, Error }
+pub enum EventKind {
+    Observation,
+    Mutation,
+    Navigation,
+    Action,
+    Popup,
+    Ownership,
+    Error,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum EventSource { Dom, Ax, Cdp, Vom, Daemon, Cli, Agent }
+pub enum EventSource {
+    Dom,
+    Ax,
+    Cdp,
+    Vom,
+    Daemon,
+    Cli,
+    Agent,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct WikiEvent {
@@ -103,11 +153,19 @@ pub struct WikiEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum TrustPlane { GroundTruth, Derived, AgentInference }
+pub enum TrustPlane {
+    GroundTruth,
+    Derived,
+    AgentInference,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ProvenanceKind { Observed, Reconciled, Annotated }
+pub enum ProvenanceKind {
+    Observed,
+    Reconciled,
+    Annotated,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Provenance {
@@ -136,7 +194,18 @@ pub struct Claim {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum RelationType { Contains, Labels, Controls, Opens, Caused, References, ItemOf, OwnedBy, Blocks, LinkedTo }
+pub enum RelationType {
+    Contains,
+    Labels,
+    Controls,
+    Opens,
+    Caused,
+    References,
+    ItemOf,
+    OwnedBy,
+    Blocks,
+    LinkedTo,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Relation {
@@ -151,7 +220,11 @@ pub struct Relation {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
-pub struct ChangedRecord { pub before: Value, pub after: Value, pub evidence: Vec<String> }
+pub struct ChangedRecord {
+    pub before: Value,
+    pub after: Value,
+    pub evidence: Vec<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 pub struct SemanticDelta {
@@ -210,7 +283,13 @@ mod tests {
 
     #[test]
     fn scope_keeps_document_and_session_boundaries_explicit() {
-        let scope = WikiScope { browser_id: "b".into(), session_id: "s".into(), tab_id: 1, document_id: "d".into(), origin: "https://example.test".into() };
+        let scope = WikiScope {
+            browser_id: "b".into(),
+            session_id: "s".into(),
+            tab_id: 1,
+            document_id: "d".into(),
+            origin: "https://example.test".into(),
+        };
         let json = serde_json::to_value(&scope).unwrap();
         assert_eq!(json["document_id"], "d");
         assert_eq!(json["session_id"], "s");
@@ -219,12 +298,24 @@ mod tests {
     #[test]
     fn agent_inference_is_not_ground_truth() {
         let claim = Claim {
-            schema_version: WIKI_SCHEMA_VERSION.into(), claim_id: "c".into(), subject_id: "p".into(),
-            predicate: "label".into(), value: Value::String("x".into()), trust: TrustPlane::AgentInference,
-            status: RecordStatus::Uncertain, evidence_event_ids: vec!["e".into()], evidence_revision: 2,
-            last_verified_revision: None, confidence: Some(0.5),
-            provenance: Provenance { kind: ProvenanceKind::Annotated, author: "agent".into(), evidence_event_ids: vec!["e".into()] },
-            valid_from_revision: 2, valid_until_revision: None,
+            schema_version: WIKI_SCHEMA_VERSION.into(),
+            claim_id: "c".into(),
+            subject_id: "p".into(),
+            predicate: "label".into(),
+            value: Value::String("x".into()),
+            trust: TrustPlane::AgentInference,
+            status: RecordStatus::Uncertain,
+            evidence_event_ids: vec!["e".into()],
+            evidence_revision: 2,
+            last_verified_revision: None,
+            confidence: Some(0.5),
+            provenance: Provenance {
+                kind: ProvenanceKind::Annotated,
+                author: "agent".into(),
+                evidence_event_ids: vec!["e".into()],
+            },
+            valid_from_revision: 2,
+            valid_until_revision: None,
         };
         assert_eq!(claim.trust, TrustPlane::AgentInference);
         assert_ne!(claim.trust, TrustPlane::GroundTruth);
@@ -232,10 +323,15 @@ mod tests {
 
     #[test]
     fn conformance_fixtures_deserialize() {
-        let page: PageInstance = serde_json::from_str(include_str!("../fixtures/wiki/page-instance.json")).unwrap();
-        let delta: SemanticDelta = serde_json::from_str(include_str!("../fixtures/wiki/delta-full-refresh.json")).unwrap();
-        let claim: Claim = serde_json::from_str(include_str!("../fixtures/wiki/claim-agent-inference.json")).unwrap();
-        let capabilities: WikiCapabilities = serde_json::from_str(include_str!("../fixtures/wiki/capabilities.json")).unwrap();
+        let page: PageInstance =
+            serde_json::from_str(include_str!("../fixtures/wiki/page-instance.json")).unwrap();
+        let delta: SemanticDelta =
+            serde_json::from_str(include_str!("../fixtures/wiki/delta-full-refresh.json")).unwrap();
+        let claim: Claim =
+            serde_json::from_str(include_str!("../fixtures/wiki/claim-agent-inference.json"))
+                .unwrap();
+        let capabilities: WikiCapabilities =
+            serde_json::from_str(include_str!("../fixtures/wiki/capabilities.json")).unwrap();
         assert_eq!(page.revision, 12);
         assert_eq!(delta.completeness, Completeness::FullRefreshRequired);
         assert_eq!(claim.trust, TrustPlane::AgentInference);

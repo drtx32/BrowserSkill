@@ -13,8 +13,7 @@ pub use super::record_v2::{
 pub use super::record_v3::{
     FillCommit, NavigationCause, RecorderInfo, SelectedOptionV3, StepCommonV3, StepResultV3,
     StepV3, StopReason, TRACE_VERSION_V3, TargetDescriptorV3, TraceDeltaV3, TraceMetricsV3,
-    TraceStateV3, TraceV3,
-    VOM_FORMAT_VERSION,
+    TraceStateV3, TraceV3, VOM_FORMAT_VERSION,
 };
 
 /// Logical v2 identifier. Not a wire field — v2 envelopes omit `version`.

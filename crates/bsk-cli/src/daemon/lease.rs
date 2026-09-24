@@ -32,29 +32,55 @@ pub enum AcquireError {
 }
 
 impl LeaseRegistry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
-    pub fn acquire(&self, browser_id: &str, owner: &str, ttl_ms: Option<u64>) -> Result<BrowserLeaseStatus, AcquireError> {
+    pub fn acquire(
+        &self,
+        browser_id: &str,
+        owner: &str,
+        ttl_ms: Option<u64>,
+    ) -> Result<BrowserLeaseStatus, AcquireError> {
         let now = now_ms();
-        let ttl = ttl_ms.unwrap_or(DEFAULT_LEASE_TTL_MS).clamp(1_000, MAX_LEASE_TTL_MS);
+        let ttl = ttl_ms
+            .unwrap_or(DEFAULT_LEASE_TTL_MS)
+            .clamp(1_000, MAX_LEASE_TTL_MS);
         let mut leases = self.leases.lock().expect("lease registry poisoned");
         if let Some(existing) = leases.get(browser_id).cloned() {
             if existing.expires_at_ms > now && existing.owner != owner {
-                return Err(AcquireError::Held(public_status(browser_id, &existing, now)));
+                return Err(AcquireError::Held(public_status(
+                    browser_id, &existing, now,
+                )));
             }
         }
         let token = format!("{owner}-{}", uuid::Uuid::new_v4());
-        let lease = Lease { owner: owner.into(), token, acquired_at_ms: now, expires_at_ms: now + ttl as i64 };
+        let lease = Lease {
+            owner: owner.into(),
+            token,
+            acquired_at_ms: now,
+            expires_at_ms: now + ttl as i64,
+        };
         let result = status_with_token(browser_id, &lease, now);
         leases.insert(browser_id.into(), lease);
         Ok(result)
     }
 
-    pub fn renew(&self, browser_id: &str, owner: &str, token: &str, ttl_ms: Option<u64>) -> Result<BrowserLeaseStatus, String> {
+    pub fn renew(
+        &self,
+        browser_id: &str,
+        owner: &str,
+        token: &str,
+        ttl_ms: Option<u64>,
+    ) -> Result<BrowserLeaseStatus, String> {
         let now = now_ms();
-        let ttl = ttl_ms.unwrap_or(DEFAULT_LEASE_TTL_MS).clamp(1_000, MAX_LEASE_TTL_MS);
+        let ttl = ttl_ms
+            .unwrap_or(DEFAULT_LEASE_TTL_MS)
+            .clamp(1_000, MAX_LEASE_TTL_MS);
         let mut leases = self.leases.lock().expect("lease registry poisoned");
-        let lease = leases.get_mut(browser_id).ok_or_else(|| "no active browser lease".to_string())?;
+        let lease = leases
+            .get_mut(browser_id)
+            .ok_or_else(|| "no active browser lease".to_string())?;
         if lease.owner != owner || lease.token != token || lease.expires_at_ms <= now {
             return Err("lease is expired or owned by another controller".into());
         }
@@ -62,9 +88,16 @@ impl LeaseRegistry {
         Ok(status_with_token(browser_id, lease, now))
     }
 
-    pub fn release(&self, browser_id: &str, owner: &str, token: Option<&str>) -> Result<(), String> {
+    pub fn release(
+        &self,
+        browser_id: &str,
+        owner: &str,
+        token: Option<&str>,
+    ) -> Result<(), String> {
         let mut leases = self.leases.lock().expect("lease registry poisoned");
-        let Some(lease) = leases.get(browser_id) else { return Ok(()); };
+        let Some(lease) = leases.get(browser_id) else {
+            return Ok(());
+        };
         if lease.owner != owner || token.is_some_and(|token| token != lease.token) {
             return Err("lease is owned by another controller".into());
         }
@@ -76,8 +109,12 @@ impl LeaseRegistry {
         let now = now_ms();
         let mut leases = self.leases.lock().expect("lease registry poisoned");
         if let Some(lease) = leases.get(browser_id) {
-            if lease.expires_at_ms > now && lease.owner == owner { return Ok(()); }
-            if lease.expires_at_ms <= now { leases.remove(browser_id); }
+            if lease.expires_at_ms > now && lease.owner == owner {
+                return Ok(());
+            }
+            if lease.expires_at_ms <= now {
+                leases.remove(browser_id);
+            }
         }
         Err(self.status_locked(&leases, browser_id, now))
     }
@@ -87,7 +124,11 @@ impl LeaseRegistry {
     /// record is deliberately not enough: explicit release and daemon
     /// restart are both represented by an empty table, so those paths must
     /// use an explicit control/bootstrap action instead.
-    pub fn require_or_reacquire(&self, browser_id: &str, owner: &str) -> Result<(), BrowserLeaseStatus> {
+    pub fn require_or_reacquire(
+        &self,
+        browser_id: &str,
+        owner: &str,
+    ) -> Result<(), BrowserLeaseStatus> {
         let now = now_ms();
         let mut leases = self.leases.lock().expect("lease registry poisoned");
         let Some(existing) = leases.get(browser_id).cloned() else {
@@ -139,11 +180,26 @@ impl LeaseRegistry {
     pub fn status_all(&self) -> Vec<BrowserLeaseStatus> {
         let now = now_ms();
         let leases = self.leases.lock().expect("lease registry poisoned");
-        leases.iter().filter(|(_, lease)| lease.expires_at_ms > now).map(|(browser, lease)| public_status(browser, lease, now)).collect()
+        leases
+            .iter()
+            .filter(|(_, lease)| lease.expires_at_ms > now)
+            .map(|(browser, lease)| public_status(browser, lease, now))
+            .collect()
     }
 
-    fn status_locked(&self, leases: &HashMap<String, Lease>, browser_id: &str, now: i64) -> BrowserLeaseStatus {
-        leases.get(browser_id).filter(|lease| lease.expires_at_ms > now).map_or_else(|| BrowserLeaseStatus::free(browser_id), |lease| public_status(browser_id, lease, now))
+    fn status_locked(
+        &self,
+        leases: &HashMap<String, Lease>,
+        browser_id: &str,
+        now: i64,
+    ) -> BrowserLeaseStatus {
+        leases
+            .get(browser_id)
+            .filter(|lease| lease.expires_at_ms > now)
+            .map_or_else(
+                || BrowserLeaseStatus::free(browser_id),
+                |lease| public_status(browser_id, lease, now),
+            )
     }
 }
 
@@ -164,7 +220,12 @@ fn status_with_token(browser_id: &str, lease: &Lease, now: i64) -> BrowserLeaseS
     }
 }
 
-pub fn now_ms() -> i64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as i64 }
+pub fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
 
 #[cfg(test)]
 mod tests {
@@ -174,7 +235,9 @@ mod tests {
     fn only_one_writer_can_hold_a_browser() {
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(5_000)).unwrap();
-        let denied = leases.acquire("browser", "writer-b", Some(5_000)).unwrap_err();
+        let denied = leases
+            .acquire("browser", "writer-b", Some(5_000))
+            .unwrap_err();
         let AcquireError::Held(holder) = denied;
         assert_eq!(holder.browser_instance_id, "browser");
         assert_eq!(holder.owner.as_deref(), Some("writer-a"));
@@ -188,9 +251,22 @@ mod tests {
     fn release_allows_handoff_and_wrong_owner_cannot_release() {
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(5_000)).unwrap();
-        assert!(leases.release("browser", "writer-b", first.token.as_deref()).is_err());
-        leases.release("browser", "writer-a", first.token.as_deref()).unwrap();
-        assert_eq!(leases.acquire("browser", "writer-b", Some(5_000)).unwrap().owner.as_deref(), Some("writer-b"));
+        assert!(
+            leases
+                .release("browser", "writer-b", first.token.as_deref())
+                .is_err()
+        );
+        leases
+            .release("browser", "writer-a", first.token.as_deref())
+            .unwrap();
+        assert_eq!(
+            leases
+                .acquire("browser", "writer-b", Some(5_000))
+                .unwrap()
+                .owner
+                .as_deref(),
+            Some("writer-b")
+        );
     }
 
     #[test]
@@ -218,7 +294,9 @@ mod tests {
     fn explicit_release_does_not_leave_a_reacquire_ticket() {
         let leases = LeaseRegistry::new();
         let first = leases.acquire("browser", "writer-a", Some(1_000)).unwrap();
-        leases.release("browser", "writer-a", first.token.as_deref()).unwrap();
+        leases
+            .release("browser", "writer-a", first.token.as_deref())
+            .unwrap();
         assert!(leases.require_or_reacquire("browser", "writer-a").is_err());
         // A deliberate control/bootstrap action may reacquire explicitly.
         assert!(leases.acquire("browser", "writer-a", Some(5_000)).is_ok());
@@ -242,7 +320,9 @@ mod tests {
         // permission_denied with the holder, never silently steal.
         let leases = LeaseRegistry::new();
         leases.acquire("browser", "writer-a", Some(5_000)).unwrap();
-        let denied = leases.require_or_reacquire("browser", "writer-b").unwrap_err();
+        let denied = leases
+            .require_or_reacquire("browser", "writer-b")
+            .unwrap_err();
         let BrowserLeaseStatus { owner, token, .. } = denied;
         assert_eq!(owner.as_deref(), Some("writer-a"));
         assert_eq!(token, None);

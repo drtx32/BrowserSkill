@@ -5,14 +5,14 @@
 use std::path::PathBuf;
 
 use anyhow::Context;
-use bsk_protocol::tools::{SnapshotParams, SnapshotResult};
 use bsk_protocol::Method;
+use bsk_protocol::tools::{SnapshotParams, SnapshotResult};
 use clap::Args;
 
+use crate::cli::TOOL_IPC_TIMEOUT;
 use crate::cli::dialogs::print_dialog_summaries;
 use crate::cli::ensure_daemon::ensure_daemon;
 use crate::cli::error::{CliError, Format};
-use crate::cli::TOOL_IPC_TIMEOUT;
 
 #[derive(Debug, Clone, Args)]
 pub struct SnapshotArgs {
