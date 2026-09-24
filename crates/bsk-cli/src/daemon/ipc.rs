@@ -1086,7 +1086,7 @@ fn handle_cancel(state: &Arc<DaemonState>, params: Value) -> ResponseBody {
 /// used by older tests doesn't carry `DaemonState`. Kept private so
 /// the production handler in [`full_handler`] is the canonical entry
 /// point.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 fn handle_cancel_with_registry_only(registry: &Arc<AbortRegistry>, params: Value) -> ResponseBody {
     let params: CancelParams = match serde_json::from_value(params) {
         Ok(p) => p,
