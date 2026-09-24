@@ -166,7 +166,10 @@ describe("handleClick", () => {
     ctx.refStore.replaceStable([["e1", { backendNodeId: 10, tabId: 4, identity }]]);
     const fake = makeFakeCdp({
       "DOM.resolveNode": (params) => ({
-        object: { objectId: (params as { backendNodeId: number }).backendNodeId === 10 ? "detached" : "live" },
+        object: {
+          objectId:
+            (params as { backendNodeId: number }).backendNodeId === 10 ? "detached" : "live",
+        },
       }),
       "Runtime.callFunctionOn": (params) => ({
         result: { value: (params as { objectId: string }).objectId === "live" },
