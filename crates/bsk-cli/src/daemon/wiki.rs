@@ -298,7 +298,7 @@ impl ShadowWikiStore {
         };
         persisted.page.revision = event.revision;
         persisted.events.push(event);
-        drop(persisted);
+        let _ = persisted;
         self.persist_or_degrade(&mut state)
     }
 
@@ -366,7 +366,7 @@ impl ShadowWikiStore {
             }
             if !matches!(&event.completeness, Completeness::Complete) {
                 fallback_reason
-                    .get_or_insert(format!("event_{:?}", &event.completeness).to_lowercase());
+                    .get_or_insert(format!("event_{:?}", event.completeness).to_lowercase());
             }
         }
         let completeness = if self.load_failed

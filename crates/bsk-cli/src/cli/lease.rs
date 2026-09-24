@@ -73,12 +73,6 @@ pub fn dispatch(cmd: LeaseCmd, format: Format) -> Result<(), CliError> {
             serde_json::json!({"browser_instance_id": a.browser, "owner": "status"}),
         ),
     };
-    let browser = match &cmd.sub {
-        LeaseSub::Status(a) => a.browser.as_str(),
-        LeaseSub::Acquire(a) => a.browser.as_str(),
-        LeaseSub::Renew(a) => a.lease.browser.as_str(),
-        LeaseSub::Release(a) => a.lease.browser.as_str(),
-    };
     let value: BrowserLeaseStatus = if method == Method::LeaseStatus {
         call(
             sock,
