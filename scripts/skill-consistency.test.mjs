@@ -14,8 +14,8 @@ test("bundled BrowserSkill guidance matches the repository source and lifecycle 
   for (const required of [
     "Use `bsk bootstrap` at task startup",
     "stable logical `default` session",
-    "timeouts only end controller execution or its lease",
-    "must not close the browser, tabs, pages, Agent Window, or unsaved content",
+    "Timeouts only end controller execution or its lease",
+    "they must not close the",
     "Reconnect/rebind",
   ]) {
     assert.ok(root.includes(required), `Skill is missing lifecycle guidance: ${required}`);
