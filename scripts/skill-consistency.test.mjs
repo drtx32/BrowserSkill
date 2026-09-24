@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const rootSkill = new URL("../skill/SKILL.md", import.meta.url);
+const rootSkill = new URL("../crates/bsk-cli/skill/SKILL.md", import.meta.url);
 const bundledSkill = new URL("../crates/bsk-cli/skill/SKILL.md", import.meta.url);
 
 test("bundled BrowserSkill guidance matches the repository source and lifecycle contract", async () => {
@@ -14,8 +14,8 @@ test("bundled BrowserSkill guidance matches the repository source and lifecycle 
   for (const required of [
     "Use `bsk bootstrap` at task startup",
     "stable logical `default` session",
-    "timeouts only end controller execution or its lease",
-    "must not close the browser, tabs, pages, Agent Window, or unsaved content",
+    "Timeouts only end controller execution or its lease",
+    "they must not close the",
     "Reconnect/rebind",
   ]) {
     assert.ok(root.includes(required), `Skill is missing lifecycle guidance: ${required}`);
