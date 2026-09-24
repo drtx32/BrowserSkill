@@ -6,7 +6,7 @@ description: Automate the user's logged-in Chromium through this plugin's inject
 # browser-skill for DeepSeek Harness
 
 All browser work must use the injected tools directly, in an Agent Window with existing logins.
-Do not control the browser through another process. Use the loaded action schemas for parameters.
+Use loaded action schemas; do not control the browser through another process.
 Never extract credentials, cookies, tokens, or other secrets.
 
 ## Before acting
@@ -67,10 +67,6 @@ Inspect unknown effects before retrying. On an error or two attempts without pro
 read [human help and recovery](references/help-and-recovery.md).
 Arbitrary page-script evaluation and interaction recording are intentionally unsupported.
 Do not invent tools or bypass these limits.
-
-## Structured locators
-
-Use deterministic VOM locators; reject ambiguous stale refs.
 
 ## Read details only when needed
 
