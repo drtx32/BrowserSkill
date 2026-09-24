@@ -1290,12 +1290,21 @@ pub(super) async fn handle_session_start(
     {
         Ok(session) => {
             if let Err(crate::daemon::lease::AcquireError::Held(holder)) = state.leases.acquire(&session.browser_id.0, &session.id.0, None) {
-                let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
-                return Err(RpcError {
-                    code: ErrorCode::PermissionDenied,
-                    message: "browser is already controlled by another active session".into(),
-                    data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
-                });
+                let held_by_local_session = state
+                    .sessions
+                    .snapshot()
+                    .into_iter()
+                    .any(|controller| controller.browser_id == session.browser_id && controller.id != session.id);
+                if !held_by_local_session {
+                    let _ = stop_session(&state.browsers, &state.sessions, &state.tool_queues, &state.session_interrupts, &session.id, DEFAULT_SESSION_STOP_TIMEOUT, None).await;
+                    return Err(RpcError {
+                        code: ErrorCode::PermissionDenied,
+                        message: "browser is already controlled by another active session".into(),
+                        data: Some(serde_json::to_value(holder).unwrap_or(Value::Null)),
+                    });
+                }
+                // Multiple sessions may observe the same persistent browser;
+                // only the session holding the lease may mutate it.
             }
             if let Err(error) = state.logical_sessions.set_default(&session.id) {
                 warn!(%error, "could not persist current logical session");
