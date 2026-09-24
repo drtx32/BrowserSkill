@@ -96,11 +96,18 @@ fn run(args: BootstrapArgs, format: Format) -> Result<()> {
         .browsers
         .iter()
         .find(|browser| browser.instance_id == reply.browser_instance_id)
-        .with_context(|| format!("connected browser {} disappeared", reply.browser_instance_id))?;
-    let executable = args
-        .browser_executable
-        .as_ref()
-        .map(|path| path.canonicalize().unwrap_or_else(|_| path.clone()).display().to_string());
+        .with_context(|| {
+            format!(
+                "connected browser {} disappeared",
+                reply.browser_instance_id
+            )
+        })?;
+    let executable = args.browser_executable.as_ref().map(|path| {
+        path.canonicalize()
+            .unwrap_or_else(|_| path.clone())
+            .display()
+            .to_string()
+    });
     let state = BootstrapState {
         logical_session: DEFAULT_SESSION.into(),
         physical_session_id: reply.session_id,
@@ -132,7 +139,6 @@ fn write_state(state: &BootstrapState) -> Result<()> {
     let tmp = home.join(format!(".bsk-session.tmp.{}", std::process::id()));
     std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(state)?))
         .with_context(|| format!("write {}", tmp.display()))?;
-    std::fs::rename(&tmp, &path)
-        .with_context(|| format!("replace {}", path.display()))?;
+    std::fs::rename(&tmp, &path).with_context(|| format!("replace {}", path.display()))?;
     Ok(())
 }

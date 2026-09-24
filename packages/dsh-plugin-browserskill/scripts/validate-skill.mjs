@@ -33,7 +33,7 @@ export function validateSkillDirectory(directory, { maxEntryBytes, browserTools 
   assert(name === "browser-skill" && description, `Invalid skill metadata in ${root}`);
   if (maxEntryBytes) {
     assert(
-      Buffer.byteLength(source) <= maxEntryBytes,
+      Buffer.byteLength(source.replaceAll("\r\n", "\n")) <= maxEntryBytes,
       `SKILL.md exceeds ${maxEntryBytes} byte budget: ${root}`,
     );
   }
