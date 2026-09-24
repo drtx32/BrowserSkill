@@ -427,11 +427,11 @@ mod tests {
         let normalized = |text: &str| text.split_whitespace().collect::<Vec<_>>().join(" ");
         let skill = normalized(DEFAULT_SKILL_MD);
         for contract in [
-            "Same-page stable logical",
-            "automatically reacquires",
-            "If another controller holds it",
-            "real navigation/page/origin identity changes",
-            "stop acting rather than refreshing",
+            "Stable logical refs may be reused",
+            "semantic identity remains valid",
+            "fresh observe is required after navigation",
+            "short-lived mutation lease",
+            "missing lease record grants no authority",
         ] {
             assert!(
                 normalized(&skill).contains(contract),
