@@ -384,7 +384,9 @@ async fn session_start_reuse_default_reacquires_missing_lease_and_respects_owner
                 let mut g = ws_clone.lock().await;
                 g.next().await
             };
-            let Some(Ok(Message::Text(text))) = next else { break };
+            let Some(Ok(Message::Text(text))) = next else {
+                break;
+            };
             let Frame::Request(req) = serde_json::from_str(&text).unwrap() else {
                 continue;
             };
@@ -433,7 +435,10 @@ async fn session_start_reuse_default_reacquires_missing_lease_and_respects_owner
             "owner": session_id,
         })),
         Duration::from_secs(2),
-    ).await.unwrap().unwrap();
+    )
+    .await
+    .unwrap()
+    .unwrap();
 
     ipc.call::<serde_json::Value, serde_json::Value>(
         "reuse-competing-acquire",
@@ -443,7 +448,10 @@ async fn session_start_reuse_default_reacquires_missing_lease_and_respects_owner
             "owner": "competing-session",
         })),
         Duration::from_secs(2),
-    ).await.unwrap().unwrap();
+    )
+    .await
+    .unwrap()
+    .unwrap();
     let denied: Result<serde_json::Value, RpcError> = ipc
         .call(
             "reuse-default-denied",
@@ -463,7 +471,10 @@ async fn session_start_reuse_default_reacquires_missing_lease_and_respects_owner
             "owner": "competing-session",
         })),
         Duration::from_secs(2),
-    ).await.unwrap().unwrap();
+    )
+    .await
+    .unwrap()
+    .unwrap();
     let reused: serde_json::Value = ipc
         .call(
             "reuse-default-reacquire",

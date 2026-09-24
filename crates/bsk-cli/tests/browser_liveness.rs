@@ -93,7 +93,10 @@ async fn reaper_drops_silent_heartbeat_browser_and_purges_its_sessions() {
         "reaping a browser must purge its sessions"
     );
     assert!(
-        state.leases.acquire("hb", "reconnected-session", Some(5_000)).is_ok(),
+        state
+            .leases
+            .acquire("hb", "reconnected-session", Some(5_000))
+            .is_ok(),
         "reaping a browser must release its old session lease for reconnect"
     );
 

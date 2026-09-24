@@ -198,12 +198,19 @@ impl BrowserClient {
             connected_at_ms: self.connected_at_ms,
             version_skew: self.version_skew,
             extension_protocol_version: self.extension_protocol_version.clone(),
-            diagnostics: self.diagnostics.lock().expect("browser diagnostics poisoned").clone(),
+            diagnostics: self
+                .diagnostics
+                .lock()
+                .expect("browser diagnostics poisoned")
+                .clone(),
         }
     }
 
     pub fn update_diagnostics(&self, diagnostics: BrowserDiagnostics) {
-        *self.diagnostics.lock().expect("browser diagnostics poisoned") = Some(diagnostics);
+        *self
+            .diagnostics
+            .lock()
+            .expect("browser diagnostics poisoned") = Some(diagnostics);
     }
 }
 
