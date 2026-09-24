@@ -132,14 +132,61 @@ mod tests {
     use serde_json::json;
 
     fn claim(id: &str, status: RecordStatus) -> Claim {
-        Claim { schema_version: "1.0".into(), claim_id: id.into(), subject_id: "r1".into(), predicate: "label".into(), value: json!(id), trust: TrustPlane::Derived, status, evidence_event_ids: vec!["e1".into()], evidence_revision: 2, last_verified_revision: Some(2), confidence: None, provenance: Provenance { kind: ProvenanceKind::Observed, author: "fixture".into(), evidence_event_ids: vec!["e1".into()] }, valid_from_revision: 0, valid_until_revision: None }
+        Claim {
+            schema_version: "1.0".into(),
+            claim_id: id.into(),
+            subject_id: "r1".into(),
+            predicate: "label".into(),
+            value: json!(id),
+            trust: TrustPlane::Derived,
+            status,
+            evidence_event_ids: vec!["e1".into()],
+            evidence_revision: 2,
+            last_verified_revision: Some(2),
+            confidence: None,
+            provenance: Provenance {
+                kind: ProvenanceKind::Observed,
+                author: "fixture".into(),
+                evidence_event_ids: vec!["e1".into()],
+            },
+            valid_from_revision: 0,
+            valid_until_revision: None,
+        }
     }
 
     #[test]
     fn frozen_claim_denominator_survives_retirement() {
-        let eligibility = FrozenEligibility { region_ids: vec![], claim_ids: vec!["c1".into(), "c2".into()], relation_types: vec![], delta_ids: vec![], frontier_ids: vec![] };
-        let before = compute_health(eligibility.clone(), &[], &[claim("c1", RecordStatus::Current), claim("c2", RecordStatus::Stale)], &[], &[], &[], 2);
-        let after = compute_health(eligibility, &[], &[claim("c1", RecordStatus::Current), claim("c2", RecordStatus::Invalidated)], &[], &[], &[], 2);
+        let eligibility = FrozenEligibility {
+            region_ids: vec![],
+            claim_ids: vec!["c1".into(), "c2".into()],
+            relation_types: vec![],
+            delta_ids: vec![],
+            frontier_ids: vec![],
+        };
+        let before = compute_health(
+            eligibility.clone(),
+            &[],
+            &[
+                claim("c1", RecordStatus::Current),
+                claim("c2", RecordStatus::Stale),
+            ],
+            &[],
+            &[],
+            &[],
+            2,
+        );
+        let after = compute_health(
+            eligibility,
+            &[],
+            &[
+                claim("c1", RecordStatus::Current),
+                claim("c2", RecordStatus::Invalidated),
+            ],
+            &[],
+            &[],
+            &[],
+            2,
+        );
         assert_eq!(before.stale_claim_rate.denominator, 2);
         assert_eq!(after.stale_claim_rate.denominator, 2);
         assert_eq!(after.stale_claim_rate.rate, 0.0);
@@ -147,7 +194,21 @@ mod tests {
 
     #[test]
     fn empty_denominators_are_explicit_zero_not_nan() {
-        let r = compute_health(FrozenEligibility { region_ids: vec![], claim_ids: vec![], relation_types: vec![], delta_ids: vec![], frontier_ids: vec![] }, &[], &[], &[], &[], &[], 7);
+        let r = compute_health(
+            FrozenEligibility {
+                region_ids: vec![],
+                claim_ids: vec![],
+                relation_types: vec![],
+                delta_ids: vec![],
+                frontier_ids: vec![],
+            },
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            7,
+        );
         assert_eq!(r.stale_claim_rate.rate, 0.0);
         assert_eq!(r.stale_claim_rate.evidence_revision, 7);
     }
