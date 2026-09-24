@@ -490,7 +490,10 @@ fn check_browser_diagnostics(status: Option<&StatusResult>) -> CheckResult {
     if signals.is_empty() {
         CheckResult::ok(
             name,
-            format!("{} active tab(s) observed; no restricted-url signal", active_tabs),
+            format!(
+                "{} active tab(s) observed; no restricted-url signal",
+                active_tabs
+            ),
         )
     } else {
         CheckResult::warn(
@@ -511,12 +514,31 @@ fn check_browser_diagnostics(status: Option<&StatusResult>) -> CheckResult {
 
 fn check_browser_leases(status: Option<&StatusResult>) -> CheckResult {
     let name = "browser control leases";
-    let Some(status) = status else { return CheckResult::na(name, "daemon status unavailable"); };
-    let held: Vec<_> = status.leases.iter().filter_map(|lease| lease.owner.as_ref().map(|owner| format!("{} by {} ({}ms)", lease.browser_instance_id, owner, lease.remaining_ms.unwrap_or(0)))).collect();
+    let Some(status) = status else {
+        return CheckResult::na(name, "daemon status unavailable");
+    };
+    let held: Vec<_> = status
+        .leases
+        .iter()
+        .filter_map(|lease| {
+            lease.owner.as_ref().map(|owner| {
+                format!(
+                    "{} by {} ({}ms)",
+                    lease.browser_instance_id,
+                    owner,
+                    lease.remaining_ms.unwrap_or(0)
+                )
+            })
+        })
+        .collect();
     if held.is_empty() {
         CheckResult::ok(name, "no active mutation lease")
     } else {
-        CheckResult::warn(name, held.join(", "), "inspect with `bsk status` or `bsk lease status --browser <id>`; expiry only removes mutation authority")
+        CheckResult::warn(
+            name,
+            held.join(", "),
+            "inspect with `bsk status` or `bsk lease status --browser <id>`; expiry only removes mutation authority",
+        )
     }
 }
 

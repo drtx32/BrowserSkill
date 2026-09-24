@@ -8,9 +8,9 @@ pub mod file_transfer;
 pub mod inflight;
 pub mod info;
 pub mod ipc;
+pub mod lease;
 pub mod lockfile;
 pub mod logical_session;
-pub mod lease;
 pub mod paths;
 pub(crate) mod probe;
 pub mod queue;
@@ -20,8 +20,8 @@ pub mod session_requests;
 pub mod sessions;
 pub mod start;
 pub mod state;
-pub mod ws;
 pub mod wiki;
+pub mod ws;
 
 #[cfg(test)]
 mod test_support;
