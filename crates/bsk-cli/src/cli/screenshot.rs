@@ -178,7 +178,10 @@ fn run_full_page(sock: PathBuf, args: ScreenshotArgs, format: Format) -> Result<
             println!("{}", out.display());
             print_dialog_summaries(&reply.dialogs);
             if !reply.complete {
-                println!("incomplete virtualized capture: {}", reply.termination.as_deref().unwrap_or("unknown"));
+                println!(
+                    "incomplete virtualized capture: {}",
+                    reply.termination.as_deref().unwrap_or("unknown")
+                );
             }
         }
     }
