@@ -431,6 +431,7 @@ export interface SnapshotResult {
   dialogs?: JavaScriptDialogInfo[];
   fields?: SnapshotField[];
   revision?: string;
+  canonical_diagnostic?: CanonicalDiagnostic;
 }
 
 export interface SnapshotField {
@@ -440,6 +441,18 @@ export interface SnapshotField {
   address?: string;
   ambiguous?: boolean;
   revision?: string;
+}
+
+export interface CanonicalDiagnostic {
+  hasCanonical: boolean;
+  fieldCount: number;
+  falsyInputs: string[];
+  documentId: string | null;
+  origin: string | null;
+  revisionKind: "number" | "null" | "undefined";
+  tabIdKind: "number" | "null" | "undefined";
+  trigger: string | null;
+  refCount: number;
 }
 
 export interface ObserveParams extends SnapshotParams {

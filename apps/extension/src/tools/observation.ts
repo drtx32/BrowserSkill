@@ -51,6 +51,7 @@ import type {
   ScreenshotResult,
   SnapshotParams,
   SnapshotResult,
+  CanonicalDiagnostic,
 } from "@/transport/types";
 import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { attachDialogs, markDialogCursor } from "./dialogs";
@@ -89,6 +90,8 @@ import {
   resolveSemanticGraph,
   type SemanticAxNode,
 } from "./vom/semantic-graph";
+
+declare const __BSK_SNAPSHOT_DIAGNOSTIC__: boolean;
 
 // ---------------------------------------------------------------------------
 // Shared helpers (legacy aliases — observation.ts kept exporting these
@@ -1081,6 +1084,62 @@ export async function captureVomObservation(
   });
 }
 
+type DiagnosticKind = CanonicalDiagnostic["revisionKind"];
+
+function diagnosticKind(value: unknown): DiagnosticKind {
+  if (typeof value === "number") return "number";
+  if (value === null) return "null";
+  return "undefined";
+}
+
+export function snapshotDiagnosticEnabled(): boolean {
+  const processEnv = (globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  }).process?.env;
+  return (
+    processEnv?.BSK_SNAPSHOT_DIAGNOSTIC === "1" ||
+    (typeof __BSK_SNAPSHOT_DIAGNOSTIC__ === "boolean" && __BSK_SNAPSHOT_DIAGNOSTIC__)
+  );
+}
+
+export function buildCanonicalDiagnostic(input: {
+  sessionId: string;
+  browserId: string;
+  tabId: number;
+  origin: string;
+  documentId: string | undefined;
+  revision: unknown;
+  trigger: string | undefined;
+  refCount: number;
+  hasCanonical: boolean;
+  fieldCount: number;
+}): CanonicalDiagnostic {
+  const values: Record<string, unknown> = {
+    sessionId: input.sessionId,
+    browserId: input.browserId,
+    tabId: input.tabId,
+    origin: input.origin,
+    documentId: input.documentId,
+    revision: input.revision,
+    refs: input.refCount > 0 ? [input.refCount] : [],
+  };
+  return {
+    hasCanonical: input.hasCanonical,
+    fieldCount: input.fieldCount,
+    falsyInputs: Object.entries(values)
+      .filter(([, value]) =>
+        value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0),
+      )
+      .map(([name]) => name),
+    documentId: input.documentId ?? null,
+    origin: input.origin || null,
+    revisionKind: diagnosticKind(input.revision),
+    tabIdKind: diagnosticKind(input.tabId),
+    trigger: input.trigger ?? null,
+    refCount: input.refCount,
+  };
+}
+
 async function handleVomObservation(
   manager: SessionManager,
   params: SnapshotParams | ObserveParams,
@@ -1209,10 +1268,11 @@ async function handleVomObservation(
     const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
     let origin = "";
     try { origin = new URL(targetUrl ?? "").origin; } catch { /* restricted URL */ }
+    const currentRevision = ctx.refStore.documentRevision(target.tabId);
     const canonical = toolName === "snapshot" && origin
       ? readCanonicalSnapshot({
           sessionId: ctx.sessionId, browserId: `window:${ctx.agentWindowId}`, tabId: target.tabId,
-          origin, documentId, revision: ctx.refStore.documentRevision(target.tabId),
+          origin, documentId, revision: currentRevision,
           trigger: params.trigger,
           fromRevision: typeof params.revision === "number" ? params.revision
             : typeof params.revision === "string" && /^\d+$/.test(params.revision)
@@ -1227,6 +1287,23 @@ async function handleVomObservation(
       hasCanonical: canonical !== undefined,
       fieldCount: canonical?.fields.length ?? 0,
     });
+    const canonicalDiagnostic = toolName === "snapshot" && snapshotDiagnosticEnabled()
+      ? buildCanonicalDiagnostic({
+          sessionId: ctx.sessionId,
+          browserId: `window:${ctx.agentWindowId}`,
+          tabId: target.tabId,
+          origin,
+          documentId,
+          revision: currentRevision,
+          trigger: params.trigger,
+          refCount: observation.refs.length,
+          hasCanonical: canonical !== undefined,
+          fieldCount: canonical?.fields.length ?? 0,
+        })
+      : undefined;
+    if (canonicalDiagnostic) {
+      console.debug("[bsk snapshot diagnostic]", canonicalDiagnostic);
+    }
     if (observation.visualOutput) {
       const page = await publishObservationPage(
         ctx.refStore,
@@ -1266,6 +1343,7 @@ async function handleVomObservation(
             }
           : {}),
         ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+        ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       });
     }
     return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
@@ -1274,6 +1352,7 @@ async function handleVomObservation(
       tab_id: target.tabId,
       truncated: observation.truncated,
       ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+      ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       ...(toolName === "observe" && observation.virtualizedLists?.length
         ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
         : {}),
