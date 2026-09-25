@@ -32,6 +32,12 @@ off with `bsk lease status`, `renew`, or `release`. Keep the logical session
 stable. Use `bsk session history --json --limit 20` for bounded, redacted
 resume context.
 
+Lease safety is same-page stable logical authority: the controller
+automatically reacquires only its valid lease. If another controller holds it,
+stop rather than competing. Real navigation/page/origin identity changes
+invalidate continuation; stop acting rather than refreshing until `read` or
+`recover` supplies current evidence.
+
 ## Default contract: progressive and batch-first
 
 After bootstrap, use the high-level operations in this order: `read`, `act`,
