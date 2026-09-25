@@ -2678,7 +2678,9 @@ describe("handleSnapshot", () => {
     expect(ctx.refStore.resolve("e1", { tabId: 5 })).toBeNull();
     expect(ctx.refStore.resolveEntry("e1")).toMatchObject({ backendNodeId: 200, tabId: 4 });
     expect(ctx.refStore.resolve("e2")).toBeNull();
-    expect(res).not.toHaveProperty("canonical_diagnostic");
+    if (!snapshotDiagnosticEnabled()) {
+      expect(res).not.toHaveProperty("canonical_diagnostic");
+    }
   });
 
   it("surfaces opt-in canonical diagnostics and keeps the default opt-out", () => {

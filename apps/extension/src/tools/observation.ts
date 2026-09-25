@@ -1290,7 +1290,11 @@ async function handleVomObservation(
             documentId,
             revision: currentRevision,
             trigger: params.trigger,
-            materializeCanonical: params.materialize_canonical === true,
+            // `snapshot` is the canonical projection entry point. Unlike
+            // `browser_observe`, its CLI invoker does not provide a trigger
+            // or materialize flag, so always seed the authoritative index
+            // before resolving the typed fields.
+            materializeCanonical: true,
             fromRevision:
               typeof params.revision === "number"
                 ? params.revision
