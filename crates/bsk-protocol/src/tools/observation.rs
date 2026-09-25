@@ -34,6 +34,9 @@ pub struct SnapshotParams {
     /// Materialization revision associated with a re-perception request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    /// Explicitly seed the canonical index from this snapshot's stable semantic addresses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub materialize_canonical: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -54,6 +57,44 @@ pub struct SnapshotResult {
     pub truncated: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dialogs: Vec<JavaScriptDialogInfo>,
+    /// Canonical semantic projection for refs in this snapshot.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SnapshotField>,
+    /// Revision of the canonical projection, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    /// Opt-in diagnostic describing why the canonical projection was absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_diagnostic: Option<CanonicalDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SnapshotField {
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CanonicalDiagnostic {
+    pub has_canonical: bool,
+    pub field_count: u32,
+    pub falsy_inputs: Vec<String>,
+    pub document_id: Option<String>,
+    pub origin: Option<String>,
+    pub revision_kind: String,
+    pub tab_id_kind: String,
+    pub trigger: Option<String>,
+    pub ref_count: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -381,10 +422,44 @@ mod tests {
             tab_id: 42,
             truncated: false,
             dialogs: vec![],
+            fields: vec![],
+            revision: None,
+            canonical_diagnostic: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["ref_count"], 1);
         assert_eq!(v["text"], "root\n  @e1 button \"submit\"\n");
+        assert!(v.get("canonical_diagnostic").is_none());
+        let round: SnapshotResult = serde_json::from_value(v).unwrap();
+        assert_eq!(round, r);
+    }
+
+    #[test]
+    fn snapshot_result_round_trips_canonical_diagnostic() {
+        let r = SnapshotResult {
+            text: "root\n".into(),
+            ref_count: 0,
+            tab_id: 42,
+            truncated: false,
+            dialogs: vec![],
+            fields: vec![],
+            revision: None,
+            canonical_diagnostic: Some(CanonicalDiagnostic {
+                has_canonical: false,
+                field_count: 0,
+                falsy_inputs: vec!["documentId".into(), "revision".into()],
+                document_id: None,
+                origin: Some("https://example.test".into()),
+                revision_kind: "undefined".into(),
+                tab_id_kind: "number".into(),
+                trigger: None,
+                ref_count: 0,
+            }),
+        };
+        let v = serde_json::to_value(&r).unwrap();
+        assert_eq!(v["canonical_diagnostic"]["hasCanonical"], false);
+        assert_eq!(v["canonical_diagnostic"]["falsyInputs"][0], "documentId");
+        assert!(v["canonical_diagnostic"].get("has_canonical").is_none());
         let round: SnapshotResult = serde_json::from_value(v).unwrap();
         assert_eq!(round, r);
     }

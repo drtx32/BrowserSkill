@@ -42,6 +42,7 @@ import {
   type SessionManager,
 } from "@/session-manager/manager";
 import type {
+  CanonicalDiagnostic,
   GetHtmlParams,
   GetHtmlResult,
   ObserveParams,
@@ -52,6 +53,7 @@ import type {
   SnapshotParams,
   SnapshotResult,
 } from "@/transport/types";
+import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { attachDialogs, markDialogCursor } from "./dialogs";
 import { rpcError } from "./errors";
 import { resolveNodeGeometry } from "./frame-geometry";
@@ -87,6 +89,9 @@ import {
   resolveSemanticGraph,
   type SemanticAxNode,
 } from "./vom/semantic-graph";
+import { readCanonicalSnapshot } from "./wiki/canonical-snapshot";
+
+declare const __BSK_SNAPSHOT_DIAGNOSTIC__: boolean;
 
 // ---------------------------------------------------------------------------
 // Shared helpers (legacy aliases — observation.ts kept exporting these
@@ -755,6 +760,7 @@ export interface SnapshotDeps {
     query(q: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]>;
   };
   conditionalSurfaceProbe?: boolean;
+  browserNavigation?: Pick<typeof chromeBrowserNavigationApi, "getFrame">;
   hoverProbeBypassOverlay?: (tabId: number, enabled: boolean) => Promise<void>;
 }
 
@@ -764,6 +770,7 @@ function getDefaultDeps(): SnapshotDeps {
     defaultDeps = {
       cdp: new ChromiumCdp(),
       tabsApi: { get: (tabId) => chrome.tabs.get(tabId), query: (q) => chrome.tabs.query(q) },
+      browserNavigation: chromeBrowserNavigationApi,
     };
   }
   return defaultDeps;
@@ -1077,6 +1084,68 @@ export async function captureVomObservation(
   });
 }
 
+type DiagnosticKind = CanonicalDiagnostic["revisionKind"];
+
+function diagnosticKind(value: unknown): DiagnosticKind {
+  if (typeof value === "number") return "number";
+  if (value === null) return "null";
+  return "undefined";
+}
+
+export function snapshotDiagnosticEnabled(): boolean {
+  const processEnv = (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
+  return (
+    processEnv?.BSK_SNAPSHOT_DIAGNOSTIC === "1" ||
+    (typeof __BSK_SNAPSHOT_DIAGNOSTIC__ === "boolean" && __BSK_SNAPSHOT_DIAGNOSTIC__)
+  );
+}
+
+export function buildCanonicalDiagnostic(input: {
+  sessionId: string;
+  browserId: string;
+  tabId: number;
+  origin: string;
+  documentId: string | undefined;
+  revision: unknown;
+  trigger: string | undefined;
+  refCount: number;
+  hasCanonical: boolean;
+  fieldCount: number;
+}): CanonicalDiagnostic {
+  const values: Record<string, unknown> = {
+    sessionId: input.sessionId,
+    browserId: input.browserId,
+    tabId: input.tabId,
+    origin: input.origin,
+    documentId: input.documentId,
+    revision: input.revision,
+    refs: input.refCount > 0 ? [input.refCount] : [],
+  };
+  return {
+    hasCanonical: input.hasCanonical,
+    fieldCount: input.fieldCount,
+    falsyInputs: Object.entries(values)
+      .filter(
+        ([, value]) =>
+          value === undefined ||
+          value === null ||
+          value === "" ||
+          (Array.isArray(value) && value.length === 0),
+      )
+      .map(([name]) => name),
+    documentId: input.documentId ?? null,
+    origin: input.origin || null,
+    revisionKind: diagnosticKind(input.revision),
+    tabIdKind: diagnosticKind(input.tabId),
+    trigger: input.trigger ?? null,
+    refCount: input.refCount,
+  };
+}
+
 async function handleVomObservation(
   manager: SessionManager,
   params: SnapshotParams | ObserveParams,
@@ -1086,9 +1155,16 @@ async function handleVomObservation(
   deps: SnapshotDeps = getDefaultDeps(),
   signal?: AbortSignal,
 ): Promise<SnapshotResult | ObserveResult | RpcError> {
-  if (signal?.aborted) return cancelled(toolName);
+  console.debug("[handleVomObservation entered]", { toolName, tabId: params.tab_id });
+  if (signal?.aborted) {
+    console.debug("[handleVomObservation early-return reason=aborted-before-session]");
+    return cancelled(toolName);
+  }
   const ctxOrErr = lookupSession(manager, params, toolName);
-  if (isRpcError(ctxOrErr)) return ctxOrErr;
+  if (isRpcError(ctxOrErr)) {
+    console.debug("[handleVomObservation early-return reason=session-lookup]");
+    return ctxOrErr;
+  }
   const ctx = ctxOrErr;
   const target = await resolveCdpAccessibleTargetTab(
     manager,
@@ -1097,10 +1173,19 @@ async function handleVomObservation(
     deps.tabsApi,
     toolName,
   );
-  if (isRpcError(target)) return target;
-  if (signal?.aborted) return cancelled(toolName);
+  if (isRpcError(target)) {
+    console.debug("[handleVomObservation early-return reason=target-resolution]");
+    return target;
+  }
+  if (signal?.aborted) {
+    console.debug("[handleVomObservation early-return reason=aborted-after-target]");
+    return cancelled(toolName);
+  }
   const denied = enforceToolTargetScope(ctx, target, effect, toolName);
-  if (denied) return denied;
+  if (denied) {
+    console.debug("[handleVomObservation early-return reason=target-scope]");
+    return denied;
+  }
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
 
   try {
@@ -1114,11 +1199,13 @@ async function handleVomObservation(
         params.max_depth !== undefined ||
         (params as ObserveParams).probe_hover ||
         (params as ObserveParams).debug_surfaces
-      )
+      ) {
+        console.debug("[handleVomObservation early-return reason=invalid-continuation-params]");
         return {
           code: "invalid_params",
           message: "cursor cannot change depth or request hover/debug probes",
         };
+      }
       const page = await publishObservationPage(
         ctx.refStore,
         deps.cdp,
@@ -1126,7 +1213,11 @@ async function handleVomObservation(
         { cursor, maxTokens: params.max_tokens },
         signal,
       );
-      return isRpcError(page) ? page : attachDialogs(deps.cdp, target.tabId, dialogCursor, page);
+      if (isRpcError(page)) {
+        console.debug("[handleVomObservation early-return reason=continuation-publish]");
+        return page;
+      }
+      return attachDialogs(deps.cdp, target.tabId, dialogCursor, page);
     }
     clearObservationContinuation(ctx.refStore);
     const documentRevision = ctx.refStore.documentRevision(target.tabId);
@@ -1141,11 +1232,102 @@ async function handleVomObservation(
     });
     throwIfAborted(signal, toolName);
     if (ctx.refStore.documentRevision(target.tabId) !== documentRevision) {
+      console.debug("[handleVomObservation early-return reason=document-changed]");
       return {
         code: "not_found",
         message: "Document changed during observation; observe again",
         data: { reason: "ref_not_found" },
       };
+    }
+    const targetByFrameId = new Map(
+      observation.frames.map((frame) => [frame.frameId, frame.target]),
+    );
+    const refEntries = observation.refs.map((ref) => {
+      const refTarget = ref.frameId ? targetByFrameId.get(ref.frameId) : undefined;
+      return [
+        ref.ref,
+        {
+          ...(ref.name ? { name: ref.name } : {}),
+          backendNodeId: ref.backendNodeId,
+          tabId: target.tabId,
+          ...(ref.frameId ? { frameId: ref.frameId } : {}),
+          ...(refTarget?.sessionId ? { cdpSessionId: refTarget.sessionId } : {}),
+          ...(ref.identity ? { identity: ref.identity } : {}),
+        },
+      ] as const;
+    });
+    const refMapping = ctx.refStore.replaceStable(refEntries);
+    const text = observation.text.replace(
+      /@e\d+\b/g,
+      (token) => `@${refMapping.get(token.slice(1)) ?? token.slice(1)}`,
+    );
+    for (const ref of observation.refs) ref.ref = refMapping.get(ref.ref) ?? ref.ref;
+    // Some dispatcher/test paths provide a partial dependency override. Keep
+    // the production browser-navigation API as a hard fallback: without the
+    // document identity the canonical projection intentionally returns
+    // undefined, which otherwise silently regresses the real CLI to legacy
+    // aria-tree output.
+    const documentId =
+      toolName === "snapshot"
+        ? ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
+          (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId)
+        : undefined;
+    const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
+    let origin = "";
+    try {
+      origin = new URL(targetUrl ?? "").origin;
+    } catch {
+      /* restricted URL */
+    }
+    const currentRevision = ctx.refStore.documentRevision(target.tabId);
+    const canonical =
+      toolName === "snapshot" && origin
+        ? readCanonicalSnapshot({
+            sessionId: ctx.sessionId,
+            browserId: `window:${ctx.agentWindowId}`,
+            tabId: target.tabId,
+            origin,
+            documentId,
+            revision: currentRevision,
+            trigger: params.trigger,
+            // `snapshot` is the canonical projection entry point. Unlike
+            // `browser_observe`, its CLI invoker does not provide a trigger
+            // or materialize flag, so always seed the authoritative index
+            // before resolving the typed fields.
+            materializeCanonical: true,
+            fromRevision:
+              typeof params.revision === "number"
+                ? params.revision
+                : typeof params.revision === "string" && /^\d+$/.test(params.revision)
+                  ? Number.parseInt(params.revision, 10)
+                  : undefined,
+            refs: observation.refs,
+          })
+        : undefined;
+    console.debug("[bsk snapshot canonical bridge]", {
+      tabId: target.tabId,
+      documentId,
+      origin,
+      hasCanonical: canonical !== undefined,
+      fieldCount: canonical?.fields.length ?? 0,
+    });
+    const canonicalDiagnostic =
+      toolName === "snapshot" && snapshotDiagnosticEnabled()
+        ? buildCanonicalDiagnostic({
+            sessionId: ctx.sessionId,
+            browserId: `window:${ctx.agentWindowId}`,
+            tabId: target.tabId,
+            origin,
+            documentId,
+            revision: currentRevision,
+            trigger: params.trigger,
+            refCount: observation.refs.length,
+            hasCanonical: canonical !== undefined,
+            fieldCount: canonical?.fields.length ?? 0,
+          })
+        : undefined;
+    if (canonicalDiagnostic) {
+      console.debug("[bsk snapshot diagnostic]", canonicalDiagnostic);
     }
     if (observation.visualOutput) {
       const page = await publishObservationPage(
@@ -1155,7 +1337,10 @@ async function handleVomObservation(
         { output: observation.visualOutput },
         signal,
       );
-      if (isRpcError(page)) return page;
+      if (isRpcError(page)) {
+        console.debug("[handleVomObservation early-return reason=visual-publish]");
+        return page;
+      }
       return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
         ...page,
         ...(observation.virtualizedLists?.length
@@ -1182,36 +1367,17 @@ async function handleVomObservation(
               },
             }
           : {}),
+        ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+        ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       });
     }
-    const targetByFrameId = new Map(
-      observation.frames.map((frame) => [frame.frameId, frame.target]),
-    );
-    const refEntries = observation.refs.map((ref) => {
-      const refTarget = ref.frameId ? targetByFrameId.get(ref.frameId) : undefined;
-      return [
-        ref.ref,
-        {
-          ...(ref.name ? { name: ref.name } : {}),
-          backendNodeId: ref.backendNodeId,
-          tabId: target.tabId,
-          ...(ref.frameId ? { frameId: ref.frameId } : {}),
-          ...(refTarget?.sessionId ? { cdpSessionId: refTarget.sessionId } : {}),
-          ...(ref.identity ? { identity: ref.identity } : {}),
-        },
-      ] as const;
-    });
-    const refMapping = ctx.refStore.replaceStable(refEntries);
-    const text = observation.text.replace(
-      /@e\d+\b/g,
-      (token) => `@${refMapping.get(token.slice(1)) ?? token.slice(1)}`,
-    );
-    for (const ref of observation.refs) ref.ref = refMapping.get(ref.ref) ?? ref.ref;
     return attachDialogs(deps.cdp, target.tabId, dialogCursor, {
       text,
       ref_count: observation.refs.length,
       tab_id: target.tabId,
       truncated: observation.truncated,
+      ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+      ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       ...(toolName === "observe" && observation.virtualizedLists?.length
         ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }
         : {}),
@@ -1240,7 +1406,11 @@ async function handleVomObservation(
   } catch (err) {
     // Fresh observations clear their predecessor before capture. Continuation owns
     // invalidation; cancellation must preserve its unpublished page for retry.
-    if (isAbortError(err)) return cancelled(toolName);
+    if (isAbortError(err)) {
+      console.debug("[handleVomObservation early-return reason=aborted-during-observation]");
+      return cancelled(toolName);
+    }
+    console.debug("[handleVomObservation threw]", err);
     return {
       code: "cdp_failed",
       message: err instanceof Error ? err.message : String(err),

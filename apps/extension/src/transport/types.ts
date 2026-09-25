@@ -421,6 +421,7 @@ export interface SnapshotParams {
   max_tokens?: number;
   trigger?: string;
   revision?: string | number;
+  materialize_canonical?: boolean;
 }
 
 export interface SnapshotResult {
@@ -429,6 +430,30 @@ export interface SnapshotResult {
   tab_id: number;
   truncated?: boolean;
   dialogs?: JavaScriptDialogInfo[];
+  fields?: SnapshotField[];
+  revision?: string;
+  canonical_diagnostic?: CanonicalDiagnostic;
+}
+
+export interface SnapshotField {
+  target: string;
+  target_id?: string;
+  binding?: string;
+  address?: string;
+  ambiguous?: boolean;
+  revision?: string;
+}
+
+export interface CanonicalDiagnostic {
+  hasCanonical: boolean;
+  fieldCount: number;
+  falsyInputs: string[];
+  documentId: string | null;
+  origin: string | null;
+  revisionKind: "number" | "null" | "undefined";
+  tabIdKind: "number" | "null" | "undefined";
+  trigger: string | null;
+  refCount: number;
 }
 
 export interface ObserveParams extends SnapshotParams {

@@ -39,6 +39,10 @@ pub struct SnapshotArgs {
     /// Materialization revision associated with a re-perception request.
     #[arg(long)]
     pub revision: Option<String>,
+
+    /// Seed canonical semantic identities from this snapshot before returning fields.
+    #[arg(long)]
+    pub materialize_canonical: bool,
 }
 
 pub fn dispatch(args: SnapshotArgs, format: Format) -> Result<(), CliError> {
@@ -54,6 +58,7 @@ fn run(sock: PathBuf, args: SnapshotArgs, format: Format) -> Result<(), CliError
         max_tokens: args.max_tokens,
         trigger: args.trigger,
         revision: args.revision,
+        materialize_canonical: args.materialize_canonical.then_some(true),
     };
     let reply: SnapshotResult = call(sock, params)?;
     match format {

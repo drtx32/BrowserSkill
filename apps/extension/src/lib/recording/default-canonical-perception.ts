@@ -1,5 +1,4 @@
-import { CanonicalPerception } from "@/tools/wiki/canonical-perception";
-import { ShadowEvidenceAdapter } from "@/tools/wiki/evidence-adapter";
+import { canonicalPerception } from "@/tools/wiki/canonical-runtime";
 import { canonicalSemanticAddress, type SemanticAddress } from "@/tools/wiki/semantic-address";
 import {
   type CanonicalRecordingTargetProvider,
@@ -11,7 +10,7 @@ import {
  * Wiki observation/reconciliation code feeds this same instance; recording
  * only reads its current, scope-gated projection.
  */
-export const recordingCanonicalPerception = new CanonicalPerception(new ShadowEvidenceAdapter());
+export const recordingCanonicalPerception = canonicalPerception;
 
 export const defaultCanonicalRecordingTargetProvider: CanonicalRecordingTargetProvider =
   projectionFromCanonicalPerception(recordingCanonicalPerception, (observation) => {

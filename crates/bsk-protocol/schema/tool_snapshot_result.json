@@ -8,10 +8,28 @@
     "text"
   ],
   "properties": {
+    "canonical_diagnostic": {
+      "description": "Opt-in diagnostic describing why the canonical projection was absent.",
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CanonicalDiagnostic"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "dialogs": {
       "type": "array",
       "items": {
         "$ref": "#/definitions/JavaScriptDialogInfo"
+      }
+    },
+    "fields": {
+      "description": "Canonical semantic projection for refs in this snapshot.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SnapshotField"
       }
     },
     "ref_count": {
@@ -19,6 +37,13 @@
       "type": "integer",
       "format": "uint32",
       "minimum": 0.0
+    },
+    "revision": {
+      "description": "Revision of the canonical projection, when available.",
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "tab_id": {
       "description": "Tab the snapshot was actually computed for (after resolving the optional `tab_id` default).",
@@ -36,6 +61,62 @@
     }
   },
   "definitions": {
+    "CanonicalDiagnostic": {
+      "type": "object",
+      "required": [
+        "falsyInputs",
+        "fieldCount",
+        "hasCanonical",
+        "refCount",
+        "revisionKind",
+        "tabIdKind"
+      ],
+      "properties": {
+        "documentId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "falsyInputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "fieldCount": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "hasCanonical": {
+          "type": "boolean"
+        },
+        "origin": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refCount": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "revisionKind": {
+          "type": "string"
+        },
+        "tabIdKind": {
+          "type": "string"
+        },
+        "trigger": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "JavaScriptDialogHandledAction": {
       "description": "How the extension resolved the dialog so CDP could continue.",
       "type": "string",
@@ -103,6 +184,47 @@
         "prompt",
         "beforeunload"
       ]
+    },
+    "SnapshotField": {
+      "type": "object",
+      "required": [
+        "target"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ambiguous": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "binding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
     }
   }
 }

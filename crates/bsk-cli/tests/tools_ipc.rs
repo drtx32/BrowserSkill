@@ -12,8 +12,8 @@ use bsk_protocol::system::{HandshakeParams, HandshakeResult};
 use bsk_protocol::tools::{
     ConsoleEntry, ConsoleEntryKind, ConsoleParams, ConsoleResult, GetHtmlParams, GetHtmlResult,
     NetworkEntry, NetworkEntryKind, NetworkParams, NetworkResult, ObserveParams, ObserveResult,
-    ScreenshotParams, ScreenshotResult, SessionStartParams, SessionStartResult, SnapshotParams,
-    SnapshotResult, TabInfo, TabListParams, TabListResult, TabScope,
+    ScreenshotParams, ScreenshotResult, SessionStartParams, SessionStartResult, SnapshotField,
+    SnapshotParams, SnapshotResult, TabInfo, TabListParams, TabListResult, TabScope,
 };
 use bsk_protocol::{
     BrowserPeerInfo, ErrorCode, Frame, Method, RequestFrame, ResponseBody, ResponseFrame, RpcError,
@@ -444,6 +444,16 @@ async fn snapshot_returns_text_and_ref_count() {
                 tab_id: 13,
                 truncated: false,
                 dialogs: vec![],
+                fields: vec![SnapshotField {
+                    target: "@e1".into(),
+                    target_id: Some("field:email".into()),
+                    binding: Some("@e1".into()),
+                    address: Some("https://example.test|doc-1|textbox|email".into()),
+                    ambiguous: Some(false),
+                    revision: Some("7".into()),
+                }],
+                revision: Some("7".into()),
+                canonical_diagnostic: None,
             })
             .unwrap(),
         )
@@ -460,6 +470,7 @@ async fn snapshot_returns_text_and_ref_count() {
             max_tokens: None,
             trigger: None,
             revision: None,
+            materialize_canonical: None,
         },
     )
     .await
@@ -467,6 +478,14 @@ async fn snapshot_returns_text_and_ref_count() {
     assert_eq!(result.ref_count, 2);
     assert!(result.text.contains("@e1"));
     assert_eq!(result.tab_id, 13);
+    assert_eq!(result.revision.as_deref(), Some("7"));
+    assert_eq!(result.fields[0].target_id.as_deref(), Some("field:email"));
+    assert_eq!(result.fields[0].binding.as_deref(), Some("@e1"));
+    assert_eq!(
+        result.fields[0].address.as_deref(),
+        Some("https://example.test|doc-1|textbox|email")
+    );
+    assert_eq!(result.fields[0].ambiguous, Some(false));
     handle.shutdown().await;
 }
 

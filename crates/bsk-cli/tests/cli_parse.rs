@@ -27,6 +27,7 @@ fn parses_snapshot_reperception_metadata() {
         "dynamic_region_unresolved",
         "--revision",
         "2",
+        "--materialize-canonical",
     ]);
     let Command::Snapshot(args) = cli.command else {
         panic!("expected snapshot command");
@@ -35,6 +36,7 @@ fn parses_snapshot_reperception_metadata() {
     assert_eq!(args.tab_id, Some(9));
     assert_eq!(args.trigger.as_deref(), Some("dynamic_region_unresolved"));
     assert_eq!(args.revision.as_deref(), Some("2"));
+    assert!(args.materialize_canonical);
 }
 
 #[test]

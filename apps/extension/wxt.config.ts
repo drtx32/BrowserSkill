@@ -88,6 +88,7 @@ export default defineConfig({
       __BSK_DAEMON_WS_URL__: JSON.stringify(
         process.env.BSK_DAEMON_WS_URL ?? "ws://127.0.0.1:52800",
       ),
+      __BSK_SNAPSHOT_DIAGNOSTIC__: JSON.stringify(process.env.BSK_SNAPSHOT_DIAGNOSTIC === "1"),
     },
     resolve: {
       alias: {

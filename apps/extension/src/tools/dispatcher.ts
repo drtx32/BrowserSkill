@@ -47,6 +47,7 @@ import type {
 import { isRequestFrame } from "@/transport/types";
 import { auditContext } from "./audit-context";
 import { prepareBackgroundExecution } from "./background-execution";
+import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { handleConsole } from "./console";
 import { handleDebug } from "./debug";
 import { handleDownload } from "./download";
@@ -569,9 +570,18 @@ export class ToolDispatcher {
             handleSnapshot(
               this.sessions,
               req.params as SnapshotParams,
-              this.cdp ? { cdp: this.cdp, tabsApi: chromeTabsCaptureApi } : undefined,
+              this.cdp
+                ? {
+                    cdp: this.cdp,
+                    tabsApi: chromeTabsCaptureApi,
+                    browserNavigation: chromeBrowserNavigationApi,
+                  }
+                : undefined,
               signal,
-            ),
+            ).catch((error) => {
+              console.debug("[handleVomObservation threw]", error);
+              throw error;
+            }),
           {},
           signal,
         );
