@@ -453,6 +453,7 @@ async fn snapshot_returns_text_and_ref_count() {
                     revision: Some("7".into()),
                 }],
                 revision: Some("7".into()),
+                canonical_diagnostic: None,
             })
             .unwrap(),
         )
