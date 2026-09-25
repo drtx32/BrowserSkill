@@ -48,6 +48,10 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     "materialize once",
     "full `observe` last resort",
     "persistent Wiki is a read-only projection",
+    "bsk snapshot --materialize-canonical",
+    "typed `fields` and `revision`",
+    "Duplicate\ncanonical addresses are ambiguous and fail closed",
+    "`canonical_diagnostic` is diagnostic evidence only",
   ]) {
     assert.ok(root.includes(required), `Skill is missing lifecycle guidance: ${required}`);
   }
