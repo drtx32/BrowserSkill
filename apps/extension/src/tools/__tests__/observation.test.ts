@@ -6,8 +6,8 @@ import { SessionManager } from "@/session-manager/manager";
 import type { CdpRunner } from "@/tools/shared";
 import type { BuildVomSceneOptions, VomFrameDocument } from "../observation";
 import {
-  buildFrameVomScene,
   buildCanonicalDiagnostic,
+  buildFrameVomScene,
   type CdpAxNode,
   captureVomObservation,
   handleGetHtml,
@@ -15,8 +15,8 @@ import {
   handleScreenshot,
   handleSnapshot,
   parsePngDimensions,
-  snapshotDiagnosticEnabled,
   type ScreenshotDeps,
+  snapshotDiagnosticEnabled,
   stripDataUrlPrefix,
   toWireVirtualizedLists,
 } from "../observation";
@@ -2688,38 +2688,40 @@ describe("handleSnapshot", () => {
       expect(snapshotDiagnosticEnabled()).toBe(false);
       process.env.BSK_SNAPSHOT_DIAGNOSTIC = "1";
       expect(snapshotDiagnosticEnabled()).toBe(true);
-      expect(buildCanonicalDiagnostic({
-        sessionId: "session",
-        browserId: "window:1",
-        tabId: 7,
-        origin: "",
-        documentId: undefined,
-        revision: 3,
-        trigger: undefined,
-        refCount: 0,
-        hasCanonical: false,
-        fieldCount: 0,
-      })).toMatchObject({
+      expect(
+        buildCanonicalDiagnostic({
+          sessionId: "session",
+          browserId: "window:1",
+          tabId: 7,
+          origin: "",
+          documentId: undefined,
+          revision: 3,
+          trigger: undefined,
+          refCount: 0,
+          hasCanonical: false,
+          fieldCount: 0,
+        }),
+      ).toMatchObject({
         hasCanonical: false,
         fieldCount: 0,
         revisionKind: "number",
         tabIdKind: "number",
         refCount: 0,
       });
-      expect(buildCanonicalDiagnostic({
-        sessionId: "session",
-        browserId: "window:1",
-        tabId: 7,
-        origin: "",
-        documentId: undefined,
-        revision: 3,
-        trigger: undefined,
-        refCount: 0,
-        hasCanonical: false,
-        fieldCount: 0,
-      }).falsyInputs).toEqual(
-        expect.arrayContaining(["origin", "documentId", "refs"]),
-      );
+      expect(
+        buildCanonicalDiagnostic({
+          sessionId: "session",
+          browserId: "window:1",
+          tabId: 7,
+          origin: "",
+          documentId: undefined,
+          revision: 3,
+          trigger: undefined,
+          refCount: 0,
+          hasCanonical: false,
+          fieldCount: 0,
+        }).falsyInputs,
+      ).toEqual(expect.arrayContaining(["origin", "documentId", "refs"]));
     } finally {
       if (previous === undefined) delete process.env.BSK_SNAPSHOT_DIAGNOSTIC;
       else process.env.BSK_SNAPSHOT_DIAGNOSTIC = previous;

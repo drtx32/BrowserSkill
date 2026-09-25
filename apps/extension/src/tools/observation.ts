@@ -42,6 +42,7 @@ import {
   type SessionManager,
 } from "@/session-manager/manager";
 import type {
+  CanonicalDiagnostic,
   GetHtmlParams,
   GetHtmlResult,
   ObserveParams,
@@ -51,7 +52,6 @@ import type {
   ScreenshotResult,
   SnapshotParams,
   SnapshotResult,
-  CanonicalDiagnostic,
 } from "@/transport/types";
 import { chromeBrowserNavigationApi } from "./browser-navigation";
 import { attachDialogs, markDialogCursor } from "./dialogs";
@@ -71,7 +71,6 @@ import {
   type ToolEffect,
 } from "./shared";
 import { lookupRefTarget, resolveSnapshotRef } from "./snapshot-ref";
-import { readCanonicalSnapshot } from "./wiki/canonical-snapshot";
 import { captureControlledViewport } from "./viewport-screenshot";
 import { type CapturedNode, type CapturedSurfaceProbe, probeHoverSurfaces } from "./vom/capture";
 import { captureObservationFacts, semanticCapture } from "./vom/capture-coordinator";
@@ -90,6 +89,7 @@ import {
   resolveSemanticGraph,
   type SemanticAxNode,
 } from "./vom/semantic-graph";
+import { readCanonicalSnapshot } from "./wiki/canonical-snapshot";
 
 declare const __BSK_SNAPSHOT_DIAGNOSTIC__: boolean;
 
@@ -1093,9 +1093,11 @@ function diagnosticKind(value: unknown): DiagnosticKind {
 }
 
 export function snapshotDiagnosticEnabled(): boolean {
-  const processEnv = (globalThis as typeof globalThis & {
-    process?: { env?: Record<string, string | undefined> };
-  }).process?.env;
+  const processEnv = (
+    globalThis as typeof globalThis & {
+      process?: { env?: Record<string, string | undefined> };
+    }
+  ).process?.env;
   return (
     processEnv?.BSK_SNAPSHOT_DIAGNOSTIC === "1" ||
     (typeof __BSK_SNAPSHOT_DIAGNOSTIC__ === "boolean" && __BSK_SNAPSHOT_DIAGNOSTIC__)
@@ -1127,8 +1129,12 @@ export function buildCanonicalDiagnostic(input: {
     hasCanonical: input.hasCanonical,
     fieldCount: input.fieldCount,
     falsyInputs: Object.entries(values)
-      .filter(([, value]) =>
-        value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0),
+      .filter(
+        ([, value]) =>
+          value === undefined ||
+          value === null ||
+          value === "" ||
+          (Array.isArray(value) && value.length === 0),
       )
       .map(([name]) => name),
     documentId: input.documentId ?? null,
@@ -1261,26 +1267,39 @@ async function handleVomObservation(
     // document identity the canonical projection intentionally returns
     // undefined, which otherwise silently regresses the real CLI to legacy
     // aria-tree output.
-    const documentId = toolName === "snapshot"
-      ? ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId
-        ?? (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId)
-      : undefined;
+    const documentId =
+      toolName === "snapshot"
+        ? ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
+          (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId)
+        : undefined;
     const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
     let origin = "";
-    try { origin = new URL(targetUrl ?? "").origin; } catch { /* restricted URL */ }
+    try {
+      origin = new URL(targetUrl ?? "").origin;
+    } catch {
+      /* restricted URL */
+    }
     const currentRevision = ctx.refStore.documentRevision(target.tabId);
-    const canonical = toolName === "snapshot" && origin
-      ? readCanonicalSnapshot({
-          sessionId: ctx.sessionId, browserId: `window:${ctx.agentWindowId}`, tabId: target.tabId,
-          origin, documentId, revision: currentRevision,
-          trigger: params.trigger,
-          materializeCanonical: params.materialize_canonical === true,
-          fromRevision: typeof params.revision === "number" ? params.revision
-            : typeof params.revision === "string" && /^\d+$/.test(params.revision)
-              ? Number.parseInt(params.revision, 10) : undefined,
-          refs: observation.refs,
-        })
-      : undefined;
+    const canonical =
+      toolName === "snapshot" && origin
+        ? readCanonicalSnapshot({
+            sessionId: ctx.sessionId,
+            browserId: `window:${ctx.agentWindowId}`,
+            tabId: target.tabId,
+            origin,
+            documentId,
+            revision: currentRevision,
+            trigger: params.trigger,
+            materializeCanonical: params.materialize_canonical === true,
+            fromRevision:
+              typeof params.revision === "number"
+                ? params.revision
+                : typeof params.revision === "string" && /^\d+$/.test(params.revision)
+                  ? Number.parseInt(params.revision, 10)
+                  : undefined,
+            refs: observation.refs,
+          })
+        : undefined;
     console.debug("[bsk snapshot canonical bridge]", {
       tabId: target.tabId,
       documentId,
@@ -1288,20 +1307,21 @@ async function handleVomObservation(
       hasCanonical: canonical !== undefined,
       fieldCount: canonical?.fields.length ?? 0,
     });
-    const canonicalDiagnostic = toolName === "snapshot" && snapshotDiagnosticEnabled()
-      ? buildCanonicalDiagnostic({
-          sessionId: ctx.sessionId,
-          browserId: `window:${ctx.agentWindowId}`,
-          tabId: target.tabId,
-          origin,
-          documentId,
-          revision: currentRevision,
-          trigger: params.trigger,
-          refCount: observation.refs.length,
-          hasCanonical: canonical !== undefined,
-          fieldCount: canonical?.fields.length ?? 0,
-        })
-      : undefined;
+    const canonicalDiagnostic =
+      toolName === "snapshot" && snapshotDiagnosticEnabled()
+        ? buildCanonicalDiagnostic({
+            sessionId: ctx.sessionId,
+            browserId: `window:${ctx.agentWindowId}`,
+            tabId: target.tabId,
+            origin,
+            documentId,
+            revision: currentRevision,
+            trigger: params.trigger,
+            refCount: observation.refs.length,
+            hasCanonical: canonical !== undefined,
+            fieldCount: canonical?.fields.length ?? 0,
+          })
+        : undefined;
     if (canonicalDiagnostic) {
       console.debug("[bsk snapshot diagnostic]", canonicalDiagnostic);
     }

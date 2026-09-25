@@ -571,7 +571,11 @@ export class ToolDispatcher {
               this.sessions,
               req.params as SnapshotParams,
               this.cdp
-                ? { cdp: this.cdp, tabsApi: chromeTabsCaptureApi, browserNavigation: chromeBrowserNavigationApi }
+                ? {
+                    cdp: this.cdp,
+                    tabsApi: chromeTabsCaptureApi,
+                    browserNavigation: chromeBrowserNavigationApi,
+                  }
                 : undefined,
               signal,
             ).catch((error) => {
