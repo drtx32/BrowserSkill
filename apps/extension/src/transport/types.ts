@@ -429,6 +429,17 @@ export interface SnapshotResult {
   tab_id: number;
   truncated?: boolean;
   dialogs?: JavaScriptDialogInfo[];
+  fields?: SnapshotField[];
+  revision?: string;
+}
+
+export interface SnapshotField {
+  target: string;
+  target_id?: string;
+  binding?: string;
+  address?: string;
+  ambiguous?: boolean;
+  revision?: string;
 }
 
 export interface ObserveParams extends SnapshotParams {

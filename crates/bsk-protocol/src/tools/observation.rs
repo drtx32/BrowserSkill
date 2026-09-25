@@ -54,6 +54,27 @@ pub struct SnapshotResult {
     pub truncated: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dialogs: Vec<JavaScriptDialogInfo>,
+    /// Canonical semantic projection for refs in this snapshot.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SnapshotField>,
+    /// Revision of the canonical projection, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct SnapshotField {
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub binding: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub address: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambiguous: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -381,6 +402,8 @@ mod tests {
             tab_id: 42,
             truncated: false,
             dialogs: vec![],
+            fields: vec![],
+            revision: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["ref_count"], 1);
