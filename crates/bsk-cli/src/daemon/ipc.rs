@@ -1382,7 +1382,9 @@ pub(super) async fn handle_session_start(
     {
         Ok(session) => {
             if let Err(crate::daemon::lease::AcquireError::Held(holder)) =
-                state.leases.acquire(&session.browser_id.0, &session.id.0, None)
+                state
+                    .leases
+                    .acquire(&session.browser_id.0, &session.id.0, None)
             {
                 let held_by_local_session = holder
                     .owner
