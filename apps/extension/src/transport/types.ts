@@ -421,6 +421,7 @@ export interface SnapshotParams {
   max_tokens?: number;
   trigger?: string;
   revision?: string | number;
+  materialize_canonical?: boolean;
 }
 
 export interface SnapshotResult {

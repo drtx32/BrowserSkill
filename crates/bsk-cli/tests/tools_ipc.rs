@@ -470,6 +470,7 @@ async fn snapshot_returns_text_and_ref_count() {
             max_tokens: None,
             trigger: None,
             revision: None,
+            materialize_canonical: None,
         },
     )
     .await

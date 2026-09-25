@@ -1274,6 +1274,7 @@ async function handleVomObservation(
           sessionId: ctx.sessionId, browserId: `window:${ctx.agentWindowId}`, tabId: target.tabId,
           origin, documentId, revision: currentRevision,
           trigger: params.trigger,
+          materializeCanonical: params.materialize_canonical === true,
           fromRevision: typeof params.revision === "number" ? params.revision
             : typeof params.revision === "string" && /^\d+$/.test(params.revision)
               ? Number.parseInt(params.revision, 10) : undefined,

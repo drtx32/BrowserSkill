@@ -20,6 +20,7 @@ export interface CanonicalSnapshotField {
 export function readCanonicalSnapshot(input: {
   browserId: string; sessionId: string; tabId: number; origin: string;
   documentId?: string; revision: number; trigger?: string; fromRevision?: number;
+  materializeCanonical?: boolean;
   refs: readonly RenderedRef[];
 }): { revision: string; fields: CanonicalSnapshotField[] } | undefined {
   if (!input.documentId) return undefined;
@@ -41,7 +42,29 @@ export function readCanonicalSnapshot(input: {
     const address = addressFor(ref);
     return address ? [{ ref, address, result: resolveSemanticTarget({ address }, targets) }] : [];
   });
-  if (input.trigger && REFRESH_TRIGGERS.has(input.trigger) && resolved.every((item) => item.result.target)) {
+  if (input.materializeCanonical) {
+    const counts = new Map<string, number>();
+    for (const item of resolved) {
+      const key = canonicalSemanticAddress(item.address);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const seedInputs = resolved
+      .filter((item) => counts.get(canonicalSemanticAddress(item.address)) === 1)
+      .map((item) => ({
+        target_id: item.result.target?.target_id
+          ?? `address:${canonicalSemanticAddress(item.address)}`,
+        address: item.address,
+        stable_ref: `@${item.ref.ref.replace(/^@/, "")}`,
+        region_id: item.ref.ctx ?? null,
+      }));
+    if (seedInputs.length > 0) {
+      canonicalPerception.materializeRecordingObservation(
+        scope, { ownership_id: `recording:${input.sessionId}` }, seedInputs,
+        Math.max(0, input.fromRevision ?? input.revision - 1),
+      );
+      targets = canonicalPerception.currentTargets(scope);
+    }
+  } else if (input.trigger && REFRESH_TRIGGERS.has(input.trigger) && resolved.every((item) => item.result.target)) {
     const receipt = canonicalPerception.materializeRecordingObservation(
       scope, { ownership_id: `recording:${input.sessionId}` },
       resolved.map((item) => ({

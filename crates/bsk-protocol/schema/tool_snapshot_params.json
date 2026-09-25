@@ -7,6 +7,13 @@
     "session_id"
   ],
   "properties": {
+    "materialize_canonical": {
+      "description": "Explicitly seed the canonical index from this snapshot's stable semantic addresses.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
     "max_depth": {
       "description": "Cap the depth of the rendered tree (defense against very deep pages). Implementation-defined default; agents typically use `Some(16)` for \"browse and read\" prompts.",
       "type": [
@@ -25,6 +32,13 @@
       "format": "uint32",
       "minimum": 0.0
     },
+    "revision": {
+      "description": "Materialization revision associated with a re-perception request.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "session_id": {
       "type": "string"
     },
@@ -35,6 +49,13 @@
         "null"
       ],
       "format": "int64"
+    },
+    "trigger": {
+      "description": "Frozen form-runtime re-perception trigger forwarded through snapshot IPC.",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   }
 }

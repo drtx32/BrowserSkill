@@ -34,6 +34,9 @@ pub struct SnapshotParams {
     /// Materialization revision associated with a re-perception request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub revision: Option<String>,
+    /// Explicitly seed the canonical index from this snapshot's stable semantic addresses.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub materialize_canonical: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
