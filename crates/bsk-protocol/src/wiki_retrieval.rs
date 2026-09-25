@@ -569,8 +569,12 @@ impl RetrievalRouter {
         );
         let mut blockers = envelope.blockers;
         blockers.push(message.into());
-        if reason == "stale_index" { blockers.push("index-drift".into()); }
-        if reason == "insufficient_current_state" { blockers.push("unavailable".into()); }
+        if reason == "stale_index" {
+            blockers.push("index-drift".into());
+        }
+        if reason == "insufficient_current_state" {
+            blockers.push("unavailable".into());
+        }
         envelope.blockers = blockers;
         envelope
     }
