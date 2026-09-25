@@ -3,8 +3,8 @@
 use std::time::Duration;
 
 mod atomic_output;
-pub mod browser_wait;
 pub mod bootstrap;
+pub mod browser_wait;
 pub mod browsers;
 pub mod business_rpc;
 pub mod console;
@@ -20,9 +20,9 @@ pub mod evaluate;
 pub mod get_html;
 pub mod human_loop;
 pub mod install_skill;
-pub mod lease;
 pub mod interaction;
 pub(crate) mod interaction_policy;
+pub mod lease;
 pub mod logs;
 pub mod navigate;
 pub mod network;
@@ -41,8 +41,8 @@ pub mod update;
 pub mod upload;
 pub mod waits;
 pub mod wheel;
-pub mod window;
 pub mod wiki;
+pub mod window;
 
 use clap::{Args, Parser, Subcommand};
 
@@ -54,10 +54,10 @@ use crate::cli::evaluate::EvaluateArgs;
 use crate::cli::get_html::GetHtmlArgs;
 use crate::cli::human_loop::RequestHelpArgs;
 use crate::cli::install_skill::InstallSkillArgs;
-use crate::cli::lease::LeaseCmd;
 use crate::cli::interaction::{
     BlurArgs, ClickArgs, FillArgs, FocusArgs, HoverArgs, PressArgs, SelectArgs,
 };
+use crate::cli::lease::LeaseCmd;
 use crate::cli::navigate::{NavigateCommand, NavigateHistoryArgs, ReloadArgs};
 use crate::cli::network::NetworkArgs;
 use crate::cli::observe::ObserveArgs;
@@ -71,8 +71,8 @@ use crate::cli::update::UpdateArgs;
 use crate::cli::upload::UploadArgs;
 use crate::cli::waits::{WaitForNavigationArgs, WaitMsArgs};
 use crate::cli::wheel::WheelArgs;
-use crate::cli::window::WindowCmd;
 use crate::cli::wiki::WikiCmd;
+use crate::cli::window::WindowCmd;
 
 /// Tool calls wait slightly longer than the daemon's 30s tool timeout so
 /// callers receive the structured daemon timeout instead of dropping the

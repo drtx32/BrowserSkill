@@ -107,7 +107,11 @@ fn render_human(s: &StatusResult) {
             browser.browser_version,
             browser.extension_version,
             browser.session_count,
-            if browser.version_skew { "  (protocol skew)" } else { "  (connected)" }
+            if browser.version_skew {
+                "  (protocol skew)"
+            } else {
+                "  (connected)"
+            }
         );
         if let Some(diagnostics) = &browser.diagnostics {
             for tab in &diagnostics.active_tabs {
@@ -116,7 +120,11 @@ fn render_human(s: &StatusResult) {
                     tab.tab_id,
                     tab.window_id,
                     tab.session_id.as_deref().unwrap_or("-"),
-                    if tab.controlled { "controlled" } else { "uncontrolled" },
+                    if tab.controlled {
+                        "controlled"
+                    } else {
+                        "uncontrolled"
+                    },
                     tab.url
                         .as_deref()
                         .map(|url| format!("  {url}"))
@@ -132,7 +140,11 @@ fn render_human(s: &StatusResult) {
         println!(
             "lease {}  {}  owner {}  {}ms remaining",
             lease.browser_instance_id,
-            if lease.owner.is_some() { "held" } else { "free" },
+            if lease.owner.is_some() {
+                "held"
+            } else {
+                "free"
+            },
             lease.owner.as_deref().unwrap_or("-"),
             lease.remaining_ms.unwrap_or(0)
         );

@@ -917,7 +917,11 @@ mod tests {
         store.session_started(&session);
         for _ in 0..4 {
             let ticket = store
-                .begin("abcd", &Method::ToolNavigate, &json!({"url":"https://example.com/private"}))
+                .begin(
+                    "abcd",
+                    &Method::ToolNavigate,
+                    &json!({"url":"https://example.com/private"}),
+                )
                 .unwrap()
                 .unwrap();
             store.finish(ticket, &ResponseBody::Ok(json!({"tab_id": 1})));
@@ -926,7 +930,13 @@ mod tests {
         let history = store.history("browser-a", "abcd", 3).unwrap();
         assert_eq!(history["events"].as_array().unwrap().len(), 3);
         assert_eq!(history["has_more"], true);
-        assert!(history["events"].as_array().unwrap().iter().any(|e| e["kind"] == "recovery"));
+        assert!(
+            history["events"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|e| e["kind"] == "recovery")
+        );
         let raw = fs::read_to_string(store.path(&run_id(&store)).unwrap()).unwrap();
         assert!(!raw.contains("private"));
     }
