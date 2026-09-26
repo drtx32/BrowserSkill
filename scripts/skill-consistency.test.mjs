@@ -39,7 +39,7 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     readFile(bundledSkill, "utf8"),
   ]);
   assert.equal(bundled, root, "crate-bundled Skill must match the repository Skill");
-  const normalizedRoot = root.replace(/\\s+/g, " ");
+  const normalizedRoot = root.replace(/\s+/g, " ");
   for (const required of [
     "Use `bsk bootstrap` at task startup",
     "stable logical `default` session",
