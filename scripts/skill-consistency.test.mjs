@@ -52,7 +52,7 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     "authoritative projection by default for snapshot",
     "typed `fields` and `revision`",
     "canonical addresses are ambiguous and fail closed",
-    "`canonical_diagnostic` is diagnostic evidence only",
+    "Treat any `canonical_diagnostic` as diagnostic evidence only",
   ]) {
     assert.ok(normalizedRoot.includes(required), `Skill is missing lifecycle guidance: ${required}`);
   }
