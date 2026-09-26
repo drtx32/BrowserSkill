@@ -1268,8 +1268,8 @@ async function handleVomObservation(
     // undefined, which otherwise silently regresses the real CLI to legacy
     // aria-tree output.
     const documentId =
-      ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
-        (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId);
+      (await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
+      (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId;
     const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
     let origin = "";
     try {
@@ -1278,27 +1278,26 @@ async function handleVomObservation(
       /* restricted URL */
     }
     const currentRevision = ctx.refStore.documentRevision(target.tabId);
-    const canonical =
-      origin
-        ? readCanonicalSnapshot({
-            sessionId: ctx.sessionId,
-            browserId: `window:${ctx.agentWindowId}`,
-            tabId: target.tabId,
-            origin,
-            documentId,
-            revision: currentRevision,
-            trigger: params.trigger,
-            // Both observation surfaces reuse the canonical projection.
-            materializeCanonical: true,
-            fromRevision:
-              typeof params.revision === "number"
-                ? params.revision
-                : typeof params.revision === "string" && /^\d+$/.test(params.revision)
-                  ? Number.parseInt(params.revision, 10)
-                  : undefined,
-            refs: observation.refs,
-          })
-        : undefined;
+    const canonical = origin
+      ? readCanonicalSnapshot({
+          sessionId: ctx.sessionId,
+          browserId: `window:${ctx.agentWindowId}`,
+          tabId: target.tabId,
+          origin,
+          documentId,
+          revision: currentRevision,
+          trigger: params.trigger,
+          // Both observation surfaces reuse the canonical projection.
+          materializeCanonical: true,
+          fromRevision:
+            typeof params.revision === "number"
+              ? params.revision
+              : typeof params.revision === "string" && /^\d+$/.test(params.revision)
+                ? Number.parseInt(params.revision, 10)
+                : undefined,
+          refs: observation.refs,
+        })
+      : undefined;
     console.debug("[bsk snapshot canonical bridge]", {
       tabId: target.tabId,
       documentId,
@@ -1363,7 +1362,9 @@ async function handleVomObservation(
             }
           : {}),
         ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
-        ...(canonical && documentId ? { canonical_scope: { document_id: documentId, origin } } : {}),
+        ...(canonical && documentId
+          ? { canonical_scope: { document_id: documentId, origin } }
+          : {}),
         ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       });
     }
