@@ -54,7 +54,10 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     "canonical addresses are ambiguous and fail closed",
     "Treat any `canonical_diagnostic` as diagnostic evidence only",
   ]) {
-    assert.ok(normalizedRoot.includes(required), `Skill is missing lifecycle guidance: ${required}`);
+    assert.ok(
+      normalizedRoot.includes(required),
+      `Skill is missing lifecycle guidance: ${required}`,
+    );
   }
   assert.doesNotMatch(root, /Start tasks with `bsk session start`\./);
 });

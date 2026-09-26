@@ -257,12 +257,10 @@ export default defineBackground(() => {
       onOverlaySessionStateChanged();
       // Keep the adopted popup inside the session's Agent Window so the
       // existing tab lifecycle guards and stop cleanup remain authoritative.
-      void chrome.tabs
-        .move(tab.id, { windowId: adopted.agentWindowId, index: -1 })
-        .catch(() => {
-          // Ownership is retained; session_stop can still remove the concrete
-          // agent-created tab if Chrome rejects the move or the tab vanished.
-        });
+      void chrome.tabs.move(tab.id, { windowId: adopted.agentWindowId, index: -1 }).catch(() => {
+        // Ownership is retained; session_stop can still remove the concrete
+        // agent-created tab if Chrome rejects the move or the tab vanished.
+      });
       void pushOverlayStateToTab(tab.id, overlayStateForWindow(adopted.agentWindowId));
       return;
     }
@@ -477,14 +475,16 @@ export default defineBackground(() => {
         const active_tabs = tabs.flatMap((tab) => {
           if (typeof tab.id !== "number" || typeof tab.windowId !== "number") return [];
           const owner = sessions.findByWindowId(tab.windowId);
-          return [{
-            tab_id: tab.id,
-            window_id: tab.windowId,
-            session_id: owner?.sessionId ?? null,
-            controlled: owner !== null && isAgentControlledTab(owner, tab.id),
-            ...(typeof tab.url === "string" ? { url: tab.url } : {}),
-            ...(typeof tab.title === "string" ? { title: tab.title } : {}),
-          }];
+          return [
+            {
+              tab_id: tab.id,
+              window_id: tab.windowId,
+              session_id: owner?.sessionId ?? null,
+              controlled: owner !== null && isAgentControlledTab(owner, tab.id),
+              ...(typeof tab.url === "string" ? { url: tab.url } : {}),
+              ...(typeof tab.title === "string" ? { title: tab.title } : {}),
+            },
+          ];
         });
         const signals = active_tabs.some((tab) =>
           ["chrome:", "chrome-extension:", "edge:", "about:"].some((scheme) =>
