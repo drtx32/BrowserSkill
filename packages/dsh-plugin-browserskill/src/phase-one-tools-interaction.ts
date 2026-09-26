@@ -2,9 +2,11 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import {
   appendTabId,
   appendTarget,
+  CANONICAL_TARGET_PARAMS,
   type PhaseOneRuntime,
   requireNonEmpty,
   requirePositive,
+  resolveCanonicalTarget,
   runnerTimeout,
   type ToolRegistrar,
 } from "./phase-one-runtime";
@@ -33,6 +35,7 @@ export function registerPhaseOneInteractionTools(
           type: "string",
           description: "Optional snapshot ref or main-document CSS selector.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         session: SESSION_PARAM,
         tabId: TAB_ID_PARAM,
         deltaX: { type: "number", description: "Horizontal input in CSS pixels; defaults to 0." },
@@ -70,6 +73,19 @@ export function registerPhaseOneInteractionTools(
         if (deltaX === 0 && deltaY === 0)
           throw new Error("at least one wheel delta must be non-zero");
         const sessionId = registry.resolve(args.session, "browser_interact(action=wheel)");
+        const target =
+          args.target !== undefined ||
+          args.target_id !== undefined ||
+          args.semantic_address !== undefined
+            ? await resolveCanonicalTarget(
+                runtime,
+                exec,
+                args,
+                sessionId,
+                args.tabId,
+                args.timeoutMs,
+              )
+            : undefined;
         const cmdArgs = [
           "wheel",
           "--session",
@@ -82,7 +98,7 @@ export function registerPhaseOneInteractionTools(
         appendTabId(cmdArgs, args.tabId);
         if (args.modifiers?.length) cmdArgs.push("--modifiers", args.modifiers.join(","));
         if (args.timeoutMs !== undefined) cmdArgs.push("--timeout", `${args.timeoutMs}ms`);
-        if (args.target !== undefined) appendTarget(cmdArgs, args.target);
+        if (target !== undefined) appendTarget(cmdArgs, target);
         const reply = (await runtime.run(
           exec,
           cmdArgs,
@@ -133,6 +149,7 @@ export function registerPhaseOneInteractionTools(
           required: true,
           description: "Snapshot ref (@e3 / e3) or CSS selector of the element to hover.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         session: SESSION_PARAM,
         tabId: TAB_ID_PARAM,
         modifiers: {
@@ -165,10 +182,23 @@ export function registerPhaseOneInteractionTools(
         ],
       },
       async execute(args, exec) {
-        requireNonEmpty(args.target, "target");
+        if (
+          args.target === undefined &&
+          args.target_id === undefined &&
+          args.semantic_address === undefined
+        )
+          throw new Error("target or canonical target_id/semantic_address is required");
         requirePositive(args.timeoutMs, "timeoutMs");
         requirePositive(args.settleMs, "settleMs");
         const sessionId = registry.resolve(args.session, "browser_interact(action=hover)");
+        const target = await resolveCanonicalTarget(
+          runtime,
+          exec,
+          args,
+          sessionId,
+          args.tabId,
+          args.timeoutMs,
+        );
         const cmdArgs = ["hover", "--session", sessionId];
         appendTabId(cmdArgs, args.tabId);
         if (args.modifiers !== undefined && args.modifiers.length > 0) {
@@ -176,7 +206,7 @@ export function registerPhaseOneInteractionTools(
         }
         if (args.settleMs !== undefined) cmdArgs.push("--settle", `${args.settleMs}ms`);
         if (args.timeoutMs !== undefined) cmdArgs.push("--timeout", `${args.timeoutMs}ms`);
-        appendTarget(cmdArgs, args.target);
+        appendTarget(cmdArgs, target);
         const reply = (await runtime.run(
           exec,
           cmdArgs,
@@ -213,6 +243,7 @@ export function registerPhaseOneInteractionTools(
           required: true,
           description: "Element ref (@e3 / e3) or main-document CSS selector to scroll into view.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         session: SESSION_PARAM,
         tabId: TAB_ID_PARAM,
         timeoutMs: TIMEOUT_MS_PARAM,
@@ -240,13 +271,26 @@ export function registerPhaseOneInteractionTools(
         ],
       },
       async execute(args, exec) {
-        requireNonEmpty(args.target, "target");
+        if (
+          args.target === undefined &&
+          args.target_id === undefined &&
+          args.semantic_address === undefined
+        )
+          throw new Error("target or canonical target_id/semantic_address is required");
         requirePositive(args.timeoutMs, "timeoutMs");
         const sessionId = registry.resolve(args.session, "browser_interact(action=scroll-to)");
+        const target = await resolveCanonicalTarget(
+          runtime,
+          exec,
+          args,
+          sessionId,
+          args.tabId,
+          args.timeoutMs,
+        );
         const cmdArgs = ["scroll-to", "--session", sessionId];
         appendTabId(cmdArgs, args.tabId);
         if (args.timeoutMs !== undefined) cmdArgs.push("--timeout", `${args.timeoutMs}ms`);
-        appendTarget(cmdArgs, args.target);
+        appendTarget(cmdArgs, target);
         const reply = (await runtime.run(
           exec,
           cmdArgs,
@@ -297,6 +341,7 @@ export function registerPhaseOneInteractionTools(
             required: true,
             description: "Snapshot ref (@e3 / e3) or CSS selector of the element.",
           },
+          ...CANONICAL_TARGET_PARAMS,
           session: SESSION_PARAM,
           tabId: TAB_ID_PARAM,
           timeoutMs: TIMEOUT_MS_PARAM,
@@ -325,13 +370,26 @@ export function registerPhaseOneInteractionTools(
           ],
         },
         async execute(args, exec) {
-          requireNonEmpty(args.target, "target");
+          if (
+            args.target === undefined &&
+            args.target_id === undefined &&
+            args.semantic_address === undefined
+          )
+            throw new Error("target or canonical target_id/semantic_address is required");
           requirePositive(args.timeoutMs, "timeoutMs");
           const sessionId = registry.resolve(args.session, `browser_interact(action=${action})`);
+          const target = await resolveCanonicalTarget(
+            runtime,
+            exec,
+            args,
+            sessionId,
+            args.tabId,
+            args.timeoutMs,
+          );
           const cmdArgs = [action, "--session", sessionId];
           appendTabId(cmdArgs, args.tabId);
           if (args.timeoutMs !== undefined) cmdArgs.push("--timeout", `${args.timeoutMs}ms`);
-          appendTarget(cmdArgs, args.target);
+          appendTarget(cmdArgs, target);
           const reply = (await runtime.run(
             exec,
             cmdArgs,
@@ -377,6 +435,7 @@ export function registerPhaseOneInteractionTools(
           required: true,
           description: "Snapshot ref (@e3 / e3) or CSS selector of the select element.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         values: {
           type: "array",
           required: true,
@@ -417,15 +476,28 @@ export function registerPhaseOneInteractionTools(
         ],
       },
       async execute(args, exec) {
-        requireNonEmpty(args.target, "target");
+        if (
+          args.target === undefined &&
+          args.target_id === undefined &&
+          args.semantic_address === undefined
+        )
+          throw new Error("target or canonical target_id/semantic_address is required");
         requirePositive(args.timeoutMs, "timeoutMs");
         if (args.values.length === 0) throw new Error("values must contain at least one option");
         const sessionId = registry.resolve(args.session, "browser_interact(action=select)");
+        const target = await resolveCanonicalTarget(
+          runtime,
+          exec,
+          args,
+          sessionId,
+          args.tabId,
+          args.timeoutMs,
+        );
         const cmdArgs = ["select", "--session", sessionId];
         appendTabId(cmdArgs, args.tabId);
         for (const value of args.values) cmdArgs.push("--value", value);
         if (args.timeoutMs !== undefined) cmdArgs.push("--timeout", `${args.timeoutMs}ms`);
-        appendTarget(cmdArgs, args.target);
+        appendTarget(cmdArgs, target);
         const reply = (await runtime.run(
           exec,
           cmdArgs,

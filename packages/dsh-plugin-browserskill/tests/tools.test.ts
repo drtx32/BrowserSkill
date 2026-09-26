@@ -1081,6 +1081,48 @@ describe("phase-one navigation tools", () => {
 });
 
 describe("phase-one support tools", () => {
+  it("resolves a canonical browser_act target to the current live binding", async () => {
+    const { tools, calls } = setup(
+      {
+        "session start": START_REPLY("s1"),
+        snapshot: { tab_id: 7, revision: 2, fields: [{ target_id: "page:save", binding: "@e9" }] },
+        click: { tab_id: 7, x: 10, y: 20 },
+      },
+      {},
+      5,
+      "verbs",
+    );
+    await tools.get("browser_navigate")?.execute({ action: "start" }, makeExec());
+    await tools
+      .get("browser_act")
+      ?.execute({ action: "click", target_id: "page:save" }, makeExec());
+    expect(calls.map((call) => call.args[0])).toEqual(["session", "snapshot", "click"]);
+    expect(calls[2].args).toContain("@e9");
+  });
+
+  it("fails closed for ambiguous canonical targets before mutation", async () => {
+    const { tools, calls } = setup(
+      {
+        "session start": START_REPLY("s1"),
+        snapshot: {
+          tab_id: 7,
+          fields: [
+            { target_id: "page:save", binding: "@e1" },
+            { target_id: "page:save", binding: "@e2" },
+          ],
+        },
+      },
+      {},
+      5,
+      "verbs",
+    );
+    await tools.get("browser_navigate")?.execute({ action: "start" }, makeExec());
+    await expect(
+      tools.get("browser_act")?.execute({ action: "click", target_id: "page:save" }, makeExec()),
+    ).rejects.toThrow(/unresolved or ambiguous/);
+    expect(calls.some((call) => call.args[0] === "click")).toBe(false);
+  });
+
   it("browser_form executes the real batch path with one materialization", async () => {
     const { tools, calls } = setup(
       {
@@ -1109,6 +1151,28 @@ describe("phase-one support tools", () => {
     expect(value.receipt).toEqual(
       expect.objectContaining({ succeeded: ["@e1", "@e2"], ambiguous: [] }),
     );
+  });
+
+  it("browser_form mutates the live binding for a canonical field", async () => {
+    const { tools, calls } = setup(
+      {
+        "session start": START_REPLY("s1"),
+        snapshot: {
+          tab_id: 7,
+          revision: 3,
+          fields: [{ target_id: "field:email", binding: "@e4" }],
+        },
+        fill: { tab_id: 7, value_length: 5 },
+      },
+      {},
+      5,
+      "verbs",
+    );
+    await tools.get("browser_navigate")?.execute({ action: "start" }, makeExec());
+    await tools
+      .get("browser_form")
+      ?.execute({ action: "fill", target_id: "field:email", value: "hello" }, makeExec());
+    expect(calls.filter((call) => call.args[0] === "fill")[0]?.args).toContain("@e4");
   });
 
   it("uses the registered CLI adapter for dynamic targeted re-perception", async () => {

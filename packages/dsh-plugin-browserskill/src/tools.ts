@@ -20,7 +20,12 @@ import { ownerSessionIds } from "./archive-cleanup";
 import { type FormField, type FormMaterialization, runFormRuntime } from "./form-runtime";
 import { trySaveScreenshot } from "./image";
 import { actionForLabel, type ObservationService } from "./observation";
-import { runnerTimeout } from "./phase-one-runtime";
+import {
+  CANONICAL_TARGET_PARAMS,
+  resolveCanonicalField,
+  resolveCanonicalTarget,
+  runnerTimeout,
+} from "./phase-one-runtime";
 import { registerPhaseOneTools } from "./phase-one-tools";
 import type { KeyedExecutor } from "./queue";
 import {
@@ -171,13 +176,15 @@ function formFields(args: Record<string, unknown>): FormField[] {
       ...field,
       ...(field.tabId === undefined && tabId !== undefined ? { tabId } : {}),
     }));
-  const action = args.action;
+  const action = args.action ?? (Array.isArray(args.values) ? "select" : "fill");
   if (action !== "fill" && action !== "select")
     throw new Error("form action must be fill, select, or batch");
   return [
     {
       action,
-      target: String(args.target ?? ""),
+      target: String(args.target ?? args.target_id ?? args.semantic_address ?? ""),
+      ...(typeof args.target_id === "string" ? { target_id: args.target_id } : {}),
+      ...(args.semantic_address !== undefined ? { semantic_address: args.semantic_address } : {}),
       ...(typeof args.value === "string" ? { value: args.value } : {}),
       ...(Array.isArray(args.values) ? { values: args.values as string[] } : {}),
       ...(typeof args.tabId === "number" ? { tabId: args.tabId } : {}),
@@ -675,6 +682,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
         },
         action: { type: "string", enum: ["fill", "select", "batch"] },
         target: { type: "string" },
+        ...CANONICAL_TARGET_PARAMS,
         tabId: { type: "integer" },
         value: { type: "string" },
         values: { type: "array", items: { type: "string" } },
@@ -684,7 +692,8 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             type: "object",
             additionalProperties: false,
             properties: {
-              target: { type: "string", required: true },
+              target: { type: "string" },
+              ...CANONICAL_TARGET_PARAMS,
               action: { type: "string", required: true, enum: ["fill", "select"] },
               value: { type: "string" },
               values: { type: "array", items: { type: "string" } },
@@ -708,8 +717,10 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
           deps,
           typeof args.timeoutMs === "number" ? args.timeoutMs : undefined,
         );
-        const materialize = async (): Promise<FormMaterialization> =>
-          materializationFromReply(
+        let initialMaterialization: FormMaterialization | undefined;
+        const materialize = async (): Promise<FormMaterialization> => {
+          if (initialMaterialization !== undefined) return initialMaterialization;
+          initialMaterialization = materializationFromReply(
             await runBsk(
               deps,
               exec,
@@ -724,7 +735,18 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
               timeout,
             ),
           );
-        const runtime = await runFormRuntime(formFields(args), {
+          return initialMaterialization;
+        };
+        const materialized = await materialize();
+        const fields = formFields(args).map((field) =>
+          field.target_id !== undefined || field.semantic_address !== undefined
+            ? {
+                ...field,
+                binding: resolveCanonicalField(materialized.fields ?? [], field),
+              }
+            : field,
+        );
+        const runtime = await runFormRuntime(fields, {
           independentFields: args.independentFields === true,
           materialize,
           mutate: async (field) => {
@@ -732,7 +754,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             if (field.tabId !== undefined) command.push("--tab-id", String(field.tabId));
             if (field.action === "fill") command.push("--value", field.value ?? "");
             else for (const value of field.values ?? []) command.push("--value", value);
-            command.push(field.target);
+            command.push(field.binding ?? field.target);
             const reply = (await runBsk(
               deps,
               exec,
@@ -791,9 +813,9 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
       parameters: {
         target: {
           type: "string",
-          required: true,
           description: "Snapshot ref (@e3 / e3) or CSS selector of the element to click.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         session: SESSION_PARAM,
         captureId: {
           type: "string",
@@ -834,8 +856,18 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
         ],
       },
       async execute(args, exec) {
-        if (args.target.trim().length === 0) throw new Error("target must be a non-empty string");
         const sessionId = registry.resolve(args.session, "browser_interact(action=click)");
+        const target = await resolveCanonicalTarget(
+          {
+            run: (runExec, command, label, session, timeout) =>
+              runBsk(deps, runExec, command, label, session, timeout),
+          },
+          exec,
+          args,
+          sessionId,
+          undefined,
+          undefined,
+        );
         const cmdArgs = ["click", "--session", sessionId];
         if (args.button !== undefined) cmdArgs.push("--button", args.button);
         if (args.clickCount !== undefined) cmdArgs.push("--click-count", String(args.clickCount));
@@ -856,7 +888,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
           );
         }
         if (args.modifiers?.length) cmdArgs.push("--modifiers", args.modifiers.join(","));
-        cmdArgs.push(args.target);
+        cmdArgs.push(target);
         const reply = (await runBsk(deps, exec, cmdArgs, "click", sessionId)) as {
           tab_id: number;
           x: number;
@@ -866,7 +898,12 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
       },
       presentCall: (args) => ({
         card: "terminal",
-        title: cmdline(deps, ["click", args.target, "--session", args.session ?? "(current)"]),
+        title: cmdline(deps, [
+          "click",
+          String(args.target ?? args.target_id ?? args.semantic_address ?? "(canonical)"),
+          "--session",
+          args.session ?? "(current)",
+        ]),
         description: "Click an element",
       }),
       presentResult: presentTerminalResult,
@@ -882,9 +919,9 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
       parameters: {
         target: {
           type: "string",
-          required: true,
           description: "Snapshot ref (@e3 / e3) or CSS selector of the field.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         value: { type: "string", required: true, description: "Text to type into the element." },
         session: SESSION_PARAM,
         noClear: {
@@ -912,11 +949,21 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
         ],
       },
       async execute(args, exec) {
-        if (args.target.trim().length === 0) throw new Error("target must be a non-empty string");
         const sessionId = registry.resolve(args.session, "browser_interact(action=fill)");
+        const target = await resolveCanonicalTarget(
+          {
+            run: (runExec, command, label, session, timeout) =>
+              runBsk(deps, runExec, command, label, session, timeout),
+          },
+          exec,
+          args,
+          sessionId,
+          undefined,
+          undefined,
+        );
         const cmdArgs = ["fill", "--session", sessionId, "--value", args.value];
         if (args.noClear === true) cmdArgs.push("--no-clear");
-        cmdArgs.push(args.target);
+        cmdArgs.push(target);
         const reply = (await runBsk(deps, exec, cmdArgs, "fill", sessionId)) as {
           tab_id: number;
           value_length: number;
@@ -925,7 +972,12 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
       },
       presentCall: (args) => ({
         card: "terminal",
-        title: cmdline(deps, ["fill", args.target, "--session", args.session ?? "(current)"]),
+        title: cmdline(deps, [
+          "fill",
+          String(args.target ?? args.target_id ?? args.semantic_address ?? "(canonical)"),
+          "--session",
+          args.session ?? "(current)",
+        ]),
         description: `Fill a field with ${args.value.length} chars`,
       }),
       presentResult: presentTerminalResult,
@@ -949,6 +1001,7 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
           type: "string",
           description: "Snapshot ref (@e3) or CSS selector to focus before pressing.",
         },
+        ...CANONICAL_TARGET_PARAMS,
         holdMs: {
           type: "integer",
           description: "Hold the key down for N milliseconds between keyDown and keyUp.",
@@ -975,14 +1028,28 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
         if (args.key.trim().length === 0) throw new Error("key must be a non-empty string");
         const sessionId = registry.resolve(args.session, "browser_interact(action=press)");
         const cmdArgs = ["press", "--session", sessionId];
-        if (args.target !== undefined) {
-          if (args.target.trim().length === 0) throw new Error("target must be a non-empty string");
+        if (
+          args.target !== undefined ||
+          args.target_id !== undefined ||
+          args.semantic_address !== undefined
+        ) {
+          const target = await resolveCanonicalTarget(
+            {
+              run: (runExec, command, label, session, timeout) =>
+                runBsk(deps, runExec, command, label, session, timeout),
+            },
+            exec,
+            args,
+            sessionId,
+            undefined,
+            undefined,
+          );
           // bsk distinguishes ref vs selector via flags; positional detection is CLI-side for
           // click/fill only, so pass the explicit flag that matches the target's shape.
-          if (/^@?e\d+$/.test(args.target)) {
-            cmdArgs.push("--ref", args.target);
+          if (/^@?e\d+$/.test(target)) {
+            cmdArgs.push("--ref", target);
           } else {
-            cmdArgs.push("--selector", args.target);
+            cmdArgs.push("--selector", target);
           }
         }
         if (args.holdMs !== undefined) cmdArgs.push("--hold-ms", String(args.holdMs));

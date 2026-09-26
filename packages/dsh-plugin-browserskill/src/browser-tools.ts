@@ -7,6 +7,7 @@
 
 import { defineTool, type ParameterSchemaSpec, type ToolDefinition } from "@deepseek-ai/dsh-tools";
 import { DEBUG_PARAMETERS } from "./debug-tool";
+import { CANONICAL_TARGET_PARAMS } from "./phase-one-runtime";
 import {
   BROWSER_PARAM,
   SESSION_PARAM,
@@ -29,7 +30,8 @@ const DEVICE_PRESETS = [
 
 const TARGET_PARAM = {
   type: "string",
-  description: "Snapshot ref such as @e3, or a CSS selector.",
+  description:
+    "Legacy snapshot ref such as @e3, or a CSS selector; prefer target_id or semantic_address.",
 } as const;
 
 const DOMAIN_RESULT = { type: "json" } as const;
@@ -209,6 +211,7 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
       session: SESSION_PARAM,
       tabId: TAB_ID_PARAM,
       target: TARGET_PARAM,
+      ...CANONICAL_TARGET_PARAMS,
       button: { type: "string", enum: ["left", "middle", "right"], description: "Click button." },
       clickCount: { type: "integer", description: "Click count; Canvas accepts 1 or 2." },
       captureId: { type: "string", description: "Single-use Canvas screenshot capture for click." },
@@ -380,6 +383,7 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
       session: SESSION_PARAM,
       tabId: TAB_ID_PARAM,
       target: TARGET_PARAM,
+      ...CANONICAL_TARGET_PARAMS,
       button: { type: "string", enum: ["left", "middle", "right"] },
       clickCount: { type: "integer" },
       captureId: { type: "string" },
@@ -416,7 +420,8 @@ const AGENT_VERB_SPECS: BrowserToolSpec[] = [
           type: "object",
           additionalProperties: false,
           properties: {
-            target: { type: "string", required: true },
+            target: { type: "string" },
+            ...CANONICAL_TARGET_PARAMS,
             action: { type: "string", required: true, enum: ["fill", "select"] },
             value: { type: "string" },
             values: { type: "array", items: { type: "string" } },

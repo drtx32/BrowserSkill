@@ -15,6 +15,10 @@ export type FormFieldAction = "fill" | "select";
 
 export interface FormField {
   target: string;
+  target_id?: string;
+  semantic_address?: unknown;
+  /** Current observation-local binding resolved from canonical identity. */
+  binding?: string;
   action: FormFieldAction;
   value?: string;
   values?: string[];
@@ -76,7 +80,8 @@ function isRefreshTrigger(value: unknown): value is FormRefreshTrigger {
 }
 
 function validateField(field: FormField): void {
-  if (!field.target.trim()) throw new Error("form field target must be non-empty");
+  if (!field.target.trim() && field.target_id === undefined && field.semantic_address === undefined)
+    throw new Error("form field target must be non-empty");
   if (field.action === "fill" && typeof field.value !== "string")
     throw new Error(`fill field ${field.target} requires value`);
   if (field.action === "select" && (!field.values || field.values.length === 0))
