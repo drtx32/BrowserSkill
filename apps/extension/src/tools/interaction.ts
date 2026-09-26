@@ -64,6 +64,11 @@ export interface InteractionDeps extends ClickOverlayDeps {
   reobserve?: (sessionId: string, tabId: number) => Promise<void>;
 }
 
+export interface ClickDispatchObserver {
+  beforePressDispatch(): RpcError | null;
+  afterPressDispatch(): void;
+}
+
 export interface ResolvedActionTarget {
   tab: ResolvedTargetTab;
   backendNodeId: number;
@@ -550,6 +555,7 @@ export async function clickResolvedTarget(
   params: Pick<ClickParams, "button" | "click_count" | "modifiers">,
   deps: InteractionDeps,
   markSent?: () => void,
+  observer?: ClickDispatchObserver,
 ): Promise<ClickResult | RpcError> {
   const { tab: target } = resolved;
   const dialogCursor = markDialogCursor(deps.cdp, target.tabId);
@@ -612,6 +618,7 @@ async function dispatchClickAtPoint(
   verifyOverlay: () => Promise<RpcError | null>,
   beforePress?: () => Promise<RpcError | null>,
   markSent?: () => void,
+  observer?: ClickDispatchObserver,
 ): Promise<RpcError | null> {
   const button = params.button ?? "left",
     modifiers = modifiersBitfield(params.modifiers);
@@ -664,6 +671,10 @@ async function dispatchClickAtPoint(
       if (deps.signal?.aborted) return failure({ code: "cancelled", message: "click aborted" });
       deps.onInputSent?.(tabId);
       markSent?.();
+      if (observer) {
+        const error = observer.beforePressDispatch();
+        if (error) return failure(error);
+      }
       attempted = true;
       releaseNeeded = true;
       await deps.cdp.send(tabId, "Input.dispatchMouseEvent", {
