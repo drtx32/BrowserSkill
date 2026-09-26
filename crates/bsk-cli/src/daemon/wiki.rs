@@ -455,7 +455,9 @@ impl ShadowWikiStore {
         file.sync_all()?;
         fs::rename(&temp, &path)?;
         File::open(root)?.sync_all()?;
-        fs::remove_file(marker)?;
+        if marker.exists() {
+            fs::remove_file(marker)?;
+        }
         Ok(())
     }
 

@@ -8,6 +8,16 @@
     "text"
   ],
   "properties": {
+    "canonical_scope": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CanonicalScope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "debug": {
       "anyOf": [
         {
@@ -22,6 +32,12 @@
       "type": "array",
       "items": {
         "$ref": "#/definitions/JavaScriptDialogInfo"
+      }
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SnapshotField"
       }
     },
     "hover_probe": {
@@ -48,6 +64,12 @@
       "format": "uint32",
       "minimum": 0.0
     },
+    "revision": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "tab_id": {
       "description": "Tab the observation was computed for.",
       "type": "integer",
@@ -61,9 +83,31 @@
       "description": "Whether the rendered tree was truncated because of `max_depth` / `max_tokens`. Agents may re-run with looser caps.",
       "default": false,
       "type": "boolean"
+    },
+    "virtualized_lists": {
+      "description": "Evidence that one or more semantic list containers expose only a partial/unknown viewport window. Omitted for ordinary pages.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/VirtualizedListEvidence"
+      }
     }
   },
   "definitions": {
+    "CanonicalScope": {
+      "type": "object",
+      "required": [
+        "document_id",
+        "origin"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
+        }
+      }
+    },
     "HoverProbeReport": {
       "description": "Reports what active hover probing did during an observation, so the agent can judge how far the live page may have drifted from the returned text.",
       "type": "object",
@@ -161,6 +205,47 @@
         }
       }
     },
+    "SnapshotField": {
+      "type": "object",
+      "required": [
+        "target"
+      ],
+      "properties": {
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ambiguous": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "binding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target": {
+          "type": "string"
+        },
+        "target_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
     "SurfaceProbeDebug": {
       "type": "object",
       "required": [
@@ -214,6 +299,39 @@
         "y": {
           "type": "number",
           "format": "double"
+        }
+      }
+    },
+    "VirtualizedListEvidence": {
+      "type": "object",
+      "required": [
+        "completeness",
+        "container_identity",
+        "reason",
+        "visible_count"
+      ],
+      "properties": {
+        "completeness": {
+          "type": "string"
+        },
+        "container_identity": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "total_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0.0
+        },
+        "visible_count": {
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0.0
         }
       }
     }

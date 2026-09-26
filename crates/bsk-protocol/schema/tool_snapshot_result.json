@@ -19,6 +19,16 @@
         }
       ]
     },
+    "canonical_scope": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/CanonicalScope"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "dialogs": {
       "type": "array",
       "items": {
@@ -114,6 +124,21 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "CanonicalScope": {
+      "type": "object",
+      "required": [
+        "document_id",
+        "origin"
+      ],
+      "properties": {
+        "document_id": {
+          "type": "string"
+        },
+        "origin": {
+          "type": "string"
         }
       }
     },
