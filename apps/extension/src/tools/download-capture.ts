@@ -70,14 +70,18 @@ export interface DownloadCaptureOptions {
   maxByteSize?: number;
   timeoutMs: number;
   signal?: AbortSignal;
-  /** `markDispatched` must be called immediately before the mouse press is sent. */
-  trigger(markDispatched: () => void): Promise<ClickResult | RpcError>;
+  trigger(observer: DownloadTriggerObserver): Promise<ClickResult | RpcError>;
 }
 
 export interface DownloadCaptureResult {
   click: ClickResult;
   item: chrome.downloads.DownloadItem;
 }
+
+export type DownloadTriggerObserver = (() => RpcError | null) & {
+  beforePressDispatch(): RpcError | null;
+  afterPressDispatch(): void;
+};
 
 interface DownloadIntent {
   url: string;
@@ -327,6 +331,23 @@ export async function captureBrowserDownload(
     return captureError("CDP download intent subscription unavailable", "none", "arm");
   }
 
+  const observer: DownloadTriggerObserver = Object.assign(
+    () => {
+      dispatched = true;
+      return null;
+    },
+    {
+      beforePressDispatch: () => {
+        dispatched = true;
+        return null;
+      },
+      afterPressDispatch: () => {
+        for (const candidate of candidates.values()) candidate.afterDispatch = true;
+        reconcile();
+      },
+    },
+  );
+
   options.downloads.onDeterminingFilename.addListener(determiningListener);
   options.downloads.onCreated.addListener(createdListener);
   options.downloads.onChanged.addListener(changedListener);
@@ -350,9 +371,7 @@ export async function captureBrowserDownload(
   }, SIZE_POLL_MS);
 
   try {
-    const triggered = await options.trigger(() => {
-      dispatched = true;
-    });
+    const triggered = await options.trigger(observer);
     if (isRpcError(triggered)) {
       void completion.catch(() => undefined);
       const effect: TransferEffectState =

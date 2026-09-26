@@ -52,7 +52,7 @@ export async function handleDownload(
       timeoutMs: params.timeout_ms ?? 120_000,
       signal: deps.signal,
       expectedFrameId: address.frameId,
-      trigger: (markDispatched) => clickResolvedTarget(ctx, address, {}, deps, markDispatched),
+      trigger: (observer) => clickResolvedTarget(ctx, address, {}, deps, undefined, observer),
     });
     if (isRpcError(capture)) return capture;
     const { click, item } = capture;

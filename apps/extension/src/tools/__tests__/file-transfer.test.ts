@@ -729,6 +729,7 @@ describe("file transfer tools", () => {
         cdp,
         tabsApi: tabsApi(),
         downloads,
+        sendInputPassthrough,
         navigationTargets: popupDownloadFakes().navigationTargets,
       },
     );
