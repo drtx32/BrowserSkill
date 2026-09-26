@@ -39,21 +39,22 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     readFile(bundledSkill, "utf8"),
   ]);
   assert.equal(bundled, root, "crate-bundled Skill must match the repository Skill");
+  const normalizedRoot = root.replace(/\s+/g, " ");
   for (const required of [
     "Use `bsk bootstrap` at task startup",
     "stable logical `default` session",
     "timeouts only end controller execution or its lease",
     "must not close the browser, tabs, pages, Agent Window, or unsaved content",
     "Reconnect/rebind",
-    "materialize once",
     "full `observe` last resort",
     "persistent Wiki is a read-only projection",
-    "bsk snapshot --materialize-canonical",
+    "canonical projection entry point",
+    "authoritative projection by default for snapshot",
     "typed `fields` and `revision`",
-    "Duplicate\ncanonical addresses are ambiguous and fail closed",
-    "`canonical_diagnostic` is diagnostic evidence only",
+    "canonical addresses are ambiguous and fail closed",
+    "Treat any `canonical_diagnostic` as diagnostic evidence only",
   ]) {
-    assert.ok(root.includes(required), `Skill is missing lifecycle guidance: ${required}`);
+    assert.ok(normalizedRoot.includes(required), `Skill is missing lifecycle guidance: ${required}`);
   }
   assert.doesNotMatch(root, /Start tasks with `bsk session start`\./);
 });

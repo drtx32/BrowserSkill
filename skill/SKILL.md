@@ -47,14 +47,16 @@ current materialization, and targeted deltas when available. Low-level
 `lease`, and `session` operations are starter/full/debug compatibility or an
 explicit fallback, not the default workflow.
 
-For canonical identity evidence, use `bsk snapshot --materialize-canonical`
-when a fresh snapshot must seed the current page projection. Prefer typed `fields` and `revision`;
-each field may carry a canonical `address`, target
-identity, binding, and ambiguity marker. Materialize once per meaningful page
-state, then use the canonical projection or a targeted delta. Duplicate
-canonical addresses are ambiguous and fail closed: do not choose or mutate a
-winner. A `canonical_diagnostic` is diagnostic evidence only; it never grants
-authority or substitutes for a verified current identity.
+For canonical identity evidence, use `bsk snapshot --json --quiet` as the
+canonical projection entry point. The current runtime seeds/materializes the
+authoritative projection by default for snapshot, so normal use does not need
+an extra materialization step. Prefer typed `fields` and `revision`; each
+field may carry a canonical `address`, target identity, binding, and ambiguity
+marker. Re-snapshot only after a meaningful page-state change, then use the
+canonical projection or a targeted delta. Duplicate canonical addresses are
+ambiguous and fail closed: do not choose or mutate a winner. Treat any
+`canonical_diagnostic` as diagnostic evidence only; it never grants authority
+or substitutes for a verified current identity.
 
 - `read`: retrieve bounded Wiki/current text, regions, refs, or deltas first;
   report stale, incomplete, unavailable, or `full_refresh_required` receipts.
