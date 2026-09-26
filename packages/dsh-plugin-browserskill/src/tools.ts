@@ -583,6 +583,22 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
               text: { type: "string", required: true },
               refCount: { type: "integer", required: true },
               truncated: { type: "boolean", required: true },
+              fields: {
+                type: "array",
+                required: true,
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  properties: {
+                    target: { type: "string", required: true },
+                    target_id: { type: "string" },
+                    binding: { type: "string" },
+                    address: { type: "string" },
+                    ambiguous: { type: "boolean" },
+                  },
+                },
+              },
+              revision: { type: "string" },
               nextCursor: { type: "string" },
             },
           },
@@ -612,6 +628,14 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             ref_count: number;
             tab_id: number;
             truncated?: boolean;
+            fields?: Array<{
+              target: string;
+              target_id?: string;
+              binding?: string;
+              address?: string;
+              ambiguous?: boolean;
+            }>;
+            revision?: string;
             next_cursor?: string;
           };
           return {
@@ -620,6 +644,8 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             text: reply.text,
             refCount: reply.ref_count,
             truncated: reply.truncated ?? false,
+            fields: Array.isArray(reply.fields) ? reply.fields : [],
+            ...(typeof reply.revision === "string" ? { revision: reply.revision } : {}),
             ...(reply.next_cursor ? { nextCursor: reply.next_cursor } : {}),
           };
         },
