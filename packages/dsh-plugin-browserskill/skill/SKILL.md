@@ -39,14 +39,13 @@ canonical/current Wiki materialization and targeted deltas when available.
 Low-level observe/click/fill/select/html/console/network/lease/session tools
 are starter/full/debug compatibility or an explicit fallback, not the default.
 
-For canonical evidence, use the injected snapshot as the canonical projection
-entry point. The current runtime materializes the authoritative projection by
-default for snapshot; do not assume a separate materialize-canonical control
-unless the loaded schema explicitly exposes one. Prefer typed `fields` and
-`revision`; fields may include canonical `address`, target identity, binding,
-and ambiguity. Re-snapshot only after a meaningful state change, then read
-current data or a targeted delta. Duplicate addresses fail closed; never pick a
-winner. `canonical_diagnostic` is evidence only, not mutation authority.
+For canonical evidence, use injected snapshot as the canonical projection
+entry point. Snapshot materializes the authoritative projection by default;
+do not invent a separate materialize control unless the loaded schema exposes
+one. Prefer typed `fields` and `revision`; fields may include canonical
+`address`, target identity, binding, and ambiguity. Re-snapshot only after a
+meaningful state change, then use current data or a targeted delta. Duplicate
+addresses fail closed. `canonical_diagnostic` is evidence only, not authority.
 
 - `read` retrieves bounded current text, regions, refs, or deltas first.
   Report stale, incomplete, unavailable, or `full_refresh_required` receipts.
