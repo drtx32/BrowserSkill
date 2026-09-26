@@ -48,7 +48,7 @@ test("canonical BrowserSkill guidance preserves lifecycle and progressive contra
     "full `observe` last resort",
     "persistent Wiki is a read-only projection",
     "canonical projection entry point",
-    "materializes the authoritative projection by default",
+    "authoritative projection by default for snapshot",
     "typed `fields` and `revision`",
     "Duplicate\ncanonical addresses are ambiguous and fail closed",
     "`canonical_diagnostic` is diagnostic evidence only",
