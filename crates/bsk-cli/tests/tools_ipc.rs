@@ -454,6 +454,7 @@ async fn snapshot_returns_text_and_ref_count() {
                 }],
                 revision: Some("7".into()),
                 canonical_diagnostic: None,
+                canonical_scope: None,
             })
             .unwrap(),
         )
@@ -509,6 +510,9 @@ async fn observe_returns_semantic_text_and_ref_count() {
                 hover_probe: None,
                 debug: None,
                 virtualized_lists: vec![],
+                fields: vec![],
+                revision: None,
+                canonical_scope: None,
             })
             .unwrap(),
         )

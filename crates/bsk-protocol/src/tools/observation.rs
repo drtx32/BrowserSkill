@@ -66,6 +66,14 @@ pub struct SnapshotResult {
     /// Opt-in diagnostic describing why the canonical projection was absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub canonical_diagnostic: Option<CanonicalDiagnostic>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_scope: Option<CanonicalScope>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+pub struct CanonicalScope {
+    pub document_id: String,
+    pub origin: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -212,6 +220,12 @@ pub struct ObserveResult {
     /// partial/unknown viewport window. Omitted for ordinary pages.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub virtualized_lists: Vec<VirtualizedListEvidence>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<SnapshotField>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_scope: Option<CanonicalScope>,
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +439,7 @@ mod tests {
             fields: vec![],
             revision: None,
             canonical_diagnostic: None,
+            canonical_scope: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["ref_count"], 1);
@@ -455,6 +470,7 @@ mod tests {
                 trigger: None,
                 ref_count: 0,
             }),
+            canonical_scope: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v["canonical_diagnostic"]["hasCanonical"], false);
@@ -518,6 +534,9 @@ mod tests {
             hover_probe: None,
             debug: None,
             virtualized_lists: Vec::new(),
+            fields: Vec::new(),
+            revision: None,
+            canonical_scope: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         assert_eq!(v.get("ref_count").and_then(|v| v.as_u64()), Some(1));
@@ -566,6 +585,9 @@ mod tests {
             }),
             debug: None,
             virtualized_lists: Vec::new(),
+            fields: Vec::new(),
+            revision: None,
+            canonical_scope: None,
         };
         let v = serde_json::to_value(&r).unwrap();
         let round: ObserveResult = serde_json::from_value(v).unwrap();

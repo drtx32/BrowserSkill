@@ -454,8 +454,16 @@ impl ShadowWikiStore {
         file.write_all(&bytes)?;
         file.sync_all()?;
         fs::rename(&temp, &path)?;
+        // Unix permits opening a directory for durability synchronization;
+        // Windows rejects that operation with ACCESS_DENIED. The file and
+        // marker have already been durably replaced above, so skipping this
+        // directory-only sync on Windows keeps the successful write path
+        // portable without weakening file fsyncs.
+        #[cfg(unix)]
         File::open(root)?.sync_all()?;
-        fs::remove_file(marker)?;
+        if marker.exists() {
+            fs::remove_file(marker)?;
+        }
         Ok(())
     }
 
@@ -519,6 +527,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(event.revision, 1);
+        assert!(!dir.path().join("shadow-wiki.incomplete").exists());
         assert_eq!(
             store
                 .ingest(
@@ -535,6 +544,10 @@ mod tests {
         );
         let restarted = ShadowWikiStore::new(Some(dir.path().to_path_buf()));
         assert_eq!(restarted.page(&page.page_instance_id).unwrap().revision, 1);
+        assert_eq!(
+            restarted.page(&page.page_instance_id).unwrap().completeness,
+            Completeness::Complete
+        );
     }
 
     #[test]

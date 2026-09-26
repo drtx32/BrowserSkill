@@ -1268,10 +1268,8 @@ async function handleVomObservation(
     // undefined, which otherwise silently regresses the real CLI to legacy
     // aria-tree output.
     const documentId =
-      toolName === "snapshot"
-        ? ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
-          (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId)
-        : undefined;
+      ((await deps.browserNavigation?.getFrame(target.tabId))?.documentId ??
+        (await chromeBrowserNavigationApi.getFrame(target.tabId))?.documentId);
     const targetUrl = target.url ?? (await deps.tabsApi.get(target.tabId)).url;
     let origin = "";
     try {
@@ -1281,7 +1279,7 @@ async function handleVomObservation(
     }
     const currentRevision = ctx.refStore.documentRevision(target.tabId);
     const canonical =
-      toolName === "snapshot" && origin
+      origin
         ? readCanonicalSnapshot({
             sessionId: ctx.sessionId,
             browserId: `window:${ctx.agentWindowId}`,
@@ -1290,10 +1288,7 @@ async function handleVomObservation(
             documentId,
             revision: currentRevision,
             trigger: params.trigger,
-            // `snapshot` is the canonical projection entry point. Unlike
-            // `browser_observe`, its CLI invoker does not provide a trigger
-            // or materialize flag, so always seed the authoritative index
-            // before resolving the typed fields.
+            // Both observation surfaces reuse the canonical projection.
             materializeCanonical: true,
             fromRevision:
               typeof params.revision === "number"
@@ -1368,6 +1363,7 @@ async function handleVomObservation(
             }
           : {}),
         ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+        ...(canonical && documentId ? { canonical_scope: { document_id: documentId, origin } } : {}),
         ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       });
     }
@@ -1377,6 +1373,7 @@ async function handleVomObservation(
       tab_id: target.tabId,
       truncated: observation.truncated,
       ...(canonical ? { fields: canonical.fields, revision: canonical.revision } : {}),
+      ...(canonical && documentId ? { canonical_scope: { document_id: documentId, origin } } : {}),
       ...(canonicalDiagnostic ? { canonical_diagnostic: canonicalDiagnostic } : {}),
       ...(toolName === "observe" && observation.virtualizedLists?.length
         ? { virtualized_lists: toWireVirtualizedLists(observation.virtualizedLists) }

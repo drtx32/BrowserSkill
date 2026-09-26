@@ -30,8 +30,10 @@ use bsk_protocol::tools::{
     DownloadParams, DownloadResult, ReturnFailure, TransferBeginParams, TransferIdParams,
     UploadParams, WaitMsParams, WaitMsResult,
 };
+use bsk_protocol::wiki::EventKind as WikiEventKind;
 use bsk_protocol::{
-    CancelParams, CancelResult, ErrorCode, Method, PingResult, ResponseBody, RpcError, RpcId,
+    CancelParams, CancelResult, Completeness, ErrorCode, EventSource, Method, PingResult,
+    ResponseBody, RpcError, RpcId, WikiScope,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -449,11 +451,16 @@ fn handle_wiki_read_with_enabled(
             serde_json::json!({"mode": "explicit"}),
         )
     } else {
-        let session_id = params
+        let requested_session_id = params
             .get("session_id")
             .and_then(Value::as_str)
             .unwrap_or("default");
-        let pages = state.wiki.active_pages_for_session(session_id);
+        let session_id = state
+            .logical_sessions
+            .resolve(&state.sessions, requested_session_id)
+            .map(|id| id.0)
+            .unwrap_or_else(|| requested_session_id.to_owned());
+        let pages = state.wiki.active_pages_for_session(&session_id);
         if pages.is_empty() {
             return ResponseBody::Err(RpcError {
                 code: ErrorCode::NotFound,
@@ -871,7 +878,12 @@ async fn handle_tool_dispatch(
                 }
             }
         }
-        Ok(v) => ResponseBody::Ok(v),
+        Ok(v) => {
+            if matches!(method, Method::ToolSnapshot | Method::ToolObserve) {
+                materialize_wiki_observation(state, &session_id.0, &v);
+            }
+            ResponseBody::Ok(v)
+        }
         Err(err) => {
             if let Some(id) = download_transfer_id {
                 state
@@ -891,6 +903,112 @@ async fn handle_tool_dispatch(
             ResponseBody::Err(error)
         }
     }
+}
+
+fn materialize_wiki_observation(state: &Arc<DaemonState>, session_id: &str, result: &Value) {
+    if !wiki_read_enabled() {
+        return;
+    }
+    let Some(session) = state.sessions.get(&SessionId(session_id.to_owned())) else {
+        return;
+    };
+    materialize_wiki_observation_for_browser(state, session_id, &session.browser_id.0, result);
+}
+
+fn materialize_wiki_observation_for_browser(
+    state: &Arc<DaemonState>,
+    session_id: &str,
+    browser_id: &str,
+    result: &Value,
+) {
+    let Some(scope_value) = result.get("canonical_scope") else {
+        return;
+    };
+    let (Some(document_id), Some(origin), Some(tab_id)) = (
+        scope_value.get("document_id").and_then(Value::as_str),
+        scope_value.get("origin").and_then(Value::as_str),
+        result.get("tab_id").and_then(Value::as_i64),
+    ) else {
+        return;
+    };
+    let scope = WikiScope {
+        browser_id: browser_id.into(),
+        session_id: session_id.into(),
+        tab_id,
+        document_id: document_id.into(),
+        origin: origin.into(),
+    };
+    let active = state.wiki.active_pages_for_session(session_id);
+    let page_id = if let Some(page) = active.iter().find(|page| page.scope == scope) {
+        page.page_instance_id.clone()
+    } else {
+        for previous in active.iter().filter(|page| page.scope.tab_id == tab_id) {
+            let _ = state.wiki.invalidate(
+                &previous.page_instance_id,
+                "document_or_origin_rollover",
+                None,
+            );
+        }
+        let Ok(page) = state.wiki.establish_page(scope, None, None, 1) else {
+            return;
+        };
+        page.page_instance_id
+    };
+    let fields = result
+        .get("fields")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let region_id = format!("projection:{document_id}");
+    let claims: Vec<Value> = fields
+        .iter()
+        .enumerate()
+        .filter_map(|(index, field)| {
+            let subject_id = field
+                .get("target_id")
+                .or_else(|| field.get("address"))?
+                .as_str()?;
+            Some(serde_json::json!({
+                "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION,
+                "claim_id": format!("projection-{index}-{subject_id}"),
+                "subject_id": subject_id,
+                "predicate": "observed",
+                "value": field.get("target").cloned().unwrap_or(Value::Null),
+                "trust": "ground_truth", "status": "active", "evidence_event_ids": [],
+                "evidence_revision": 0, "last_verified_revision": null, "confidence": 1.0,
+                "provenance": {"kind": "observed", "author": "browser", "evidence_event_ids": []},
+                "valid_from_revision": 0, "valid_until_revision": null
+            }))
+        })
+        .collect();
+    let regions = vec![serde_json::json!({
+        "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION, "region_id": region_id,
+        "page_instance_id": page_id, "parent_region_id": null, "kind": "content",
+        "locator": document_id, "bounds": null, "revision_first_seen": 0,
+        "revision_last_seen": 0, "status": "active", "completeness": "complete"
+    })];
+    let deltas = vec![serde_json::json!({
+        "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION, "page_instance_id": page_id,
+        "from_revision": 0, "to_revision": 0, "added": fields,
+        "changed": [], "removed": [], "dirty_regions": [region_id],
+        "completeness": "complete", "fallback_reason": null
+    })];
+    let payload = serde_json::json!({
+        "fields": result.get("fields").cloned().unwrap_or(Value::Array(Vec::new())),
+        "projection_revision": result.get("revision").cloned().unwrap_or(Value::Null),
+        "claims": claims, "regions": regions, "deltas": deltas,
+        "blockers": if fields.is_empty() { vec!["first_observation_pending"] } else { vec![] },
+        "added": result.get("fields").cloned().unwrap_or(Value::Array(Vec::new())),
+        "dirty_regions": [region_id]
+    });
+    let _ = state.wiki.ingest(
+        &page_id,
+        None,
+        WikiEventKind::Observation,
+        EventSource::Vom,
+        payload,
+        Completeness::Complete,
+    );
 }
 
 fn handle_transfer_begin(state: &Arc<DaemonState>, params: Value) -> ResponseBody {
@@ -2615,6 +2733,63 @@ mod tests {
             }
             other => panic!("expected unsupported response, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn snapshot_and_observe_projection_materialize_healthy_view_and_pending_first_event() {
+        let mut daemon = DaemonState::new(DaemonConfig::new(0));
+        let temp = TempDir::new().unwrap();
+        daemon.wiki = Arc::new(ShadowWikiStore::new(Some(temp.path().join("wiki"))));
+        let state = Arc::new(daemon);
+        let scope = |fields: Value| {
+            serde_json::json!({
+                "tab_id": 7,
+                "canonical_scope": {"document_id": "doc-1", "origin": "https://example.test"},
+                "fields": fields, "revision": "1"
+            })
+        };
+
+        materialize_wiki_observation_for_browser(
+            &state,
+            "default",
+            "browser",
+            &scope(serde_json::json!([])),
+        );
+        materialize_wiki_observation_for_browser(
+            &state,
+            "default",
+            "browser",
+            &scope(
+                serde_json::json!([{"target": "@e1", "target_id": "address:button", "address": "https://example.test|doc-1|button|save"}]),
+            ),
+        );
+
+        let view = handle_wiki_read_with_enabled(
+            Method::WikiView,
+            &state,
+            serde_json::json!({"session_id": "default"}),
+            true,
+        );
+        let ResponseBody::Ok(value) = view else {
+            panic!("expected healthy Wiki view");
+        };
+        assert_eq!(value["completeness"], "complete");
+        assert!(!value["claims"].as_array().unwrap().is_empty());
+        assert!(!value["active_regions"].as_array().unwrap().is_empty());
+        assert!(!value["recent_deltas"].as_array().unwrap().is_empty());
+
+        let events = state
+            .wiki
+            .events(&state.wiki.active_pages_for_session("default")[0].page_instance_id);
+        assert_eq!(events.len(), 2);
+        assert!(
+            events[0].payload["blockers"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|v| v == "first_observation_pending")
+        );
+        assert!(!temp.path().join("wiki/shadow-wiki.incomplete").exists());
     }
 
     #[test]
