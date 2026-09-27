@@ -729,8 +729,8 @@ describe("file transfer tools", () => {
         cdp,
         tabsApi: tabsApi(),
         downloads,
-        sendInputPassthrough,
         navigationTargets: popupDownloadFakes().navigationTargets,
+        sendInputPassthrough,
       },
     );
     expect(sendInputPassthrough.mock.calls.map(([, m]) => m.phase)).toEqual(

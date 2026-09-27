@@ -590,8 +590,8 @@ export async function clickResolvedTarget(
   }
 
   const clickCount = params.click_count ?? 1;
-  if (clickCount < 1) {
-    return { code: "invalid_params", message: "click_count must be greater than zero" };
+  if (!Number.isSafeInteger(clickCount) || clickCount < 1) {
+    return { code: "invalid_params", message: "click_count must be a positive integer" };
   }
   const error = await withClickOverlay(target.tabId, centre, deps, (verifyOverlay) =>
     dispatchClickAtPoint(
@@ -616,7 +616,7 @@ export async function clickResolvedTarget(
   });
 }
 
-/** Shared mouse lifecycle; visual clicks additionally verify after move and emit full double clicks. */
+/** Shared mouse lifecycle; visual clicks additionally verify their captured target. */
 async function dispatchClickAtPoint(
   tabId: number,
   point: { x: number; y: number },
@@ -664,10 +664,9 @@ async function dispatchClickAtPoint(
       const error = await beforePress();
       if (error) return failure(error);
     }
-    const counts = beforePress
-      ? Array.from({ length: params.click_count ?? 1 }, (_, i) => i + 1)
-      : [count];
-    for (count of counts) {
+    // clickCount describes this press in a consecutive sequence; it does not
+    // ask Chrome to synthesize the preceding clicks for DOM targets.
+    for (count = 1; count <= (params.click_count ?? 1); count++) {
       if (beforePress && count > 1) {
         const error = await beforePress();
         if (error) return failure(error);
