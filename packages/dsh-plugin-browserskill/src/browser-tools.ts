@@ -303,7 +303,8 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
       completionCriteria: {
         type: "object",
         additionalProperties: false,
-        description: "Automatic completion detector for request-help.",
+        description:
+          "Automatic completion detector for request-help (at most 8 conditions across any and all).",
         properties: {
           any: {
             type: "array",
@@ -312,7 +313,11 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
               additionalProperties: false,
               properties: {
                 urlContains: { type: "string" },
-                urlMatches: { type: "string" },
+                urlMatches: {
+                  type: "string",
+                  description:
+                    "RE2-compatible URL regex (max 128 characters; compiled program max 4096 instructions).",
+                },
                 selectorExists: { type: "string" },
                 selectorMissing: { type: "string" },
                 textExists: { type: "string" },
@@ -327,7 +332,11 @@ const BROWSER_TOOL_SPECS: BrowserToolSpec[] = [
               additionalProperties: false,
               properties: {
                 urlContains: { type: "string" },
-                urlMatches: { type: "string" },
+                urlMatches: {
+                  type: "string",
+                  description:
+                    "RE2-compatible URL regex (max 128 characters; compiled program max 4096 instructions).",
+                },
                 selectorExists: { type: "string" },
                 selectorMissing: { type: "string" },
                 textExists: { type: "string" },
