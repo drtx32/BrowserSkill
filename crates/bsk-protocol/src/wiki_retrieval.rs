@@ -209,9 +209,15 @@ impl RetrievalRouter {
             let refs: Vec<_> = state
                 .refs
                 .iter()
-                .filter(|r| r.ref_id == ref_id && r.lifecycle == crate::wiki::RefLifecycle::Live)
+                .filter(|r| {
+                    r.page_instance_id == state.page_instance.page_instance_id
+                        && r.ref_id == ref_id
+                        && r.lifecycle == crate::wiki::RefLifecycle::Live
+                })
                 .collect();
-            if !refs.is_empty() {
+            // A ref is only safe when its current page projection contains one
+            // live binding. Duplicates are ambiguous and must fail closed.
+            if refs.len() == 1 {
                 let results = refs
                     .into_iter()
                     .take(limit)
@@ -235,7 +241,7 @@ impl RetrievalRouter {
         }
 
         if let Some(region_id) = query.region_id.as_deref() {
-            let results = self.region_results(state, Some(region_id), limit);
+            let results = self.direct_region_results(state, region_id, limit);
             if !results.is_empty() {
                 return self.envelope(
                     state,
@@ -457,6 +463,27 @@ impl RetrievalRouter {
             .regions
             .iter()
             .filter(|r| r.status == RecordStatus::Active && r.parent_region_id.as_deref() == parent)
+            .take(limit)
+            .map(|r| RetrievalResult {
+                kind: "region".into(),
+                id: r.region_id.clone(),
+                value: json!(r),
+                evidence_event_ids: vec![],
+                revision: r.revision_last_seen,
+            })
+            .collect()
+    }
+
+    fn direct_region_results(
+        &self,
+        state: &WikiReadState,
+        region_id: &str,
+        limit: usize,
+    ) -> Vec<RetrievalResult> {
+        state
+            .regions
+            .iter()
+            .filter(|r| r.status == RecordStatus::Active && r.region_id == region_id)
             .take(limit)
             .map(|r| RetrievalResult {
                 kind: "region".into(),
@@ -761,6 +788,14 @@ mod tests {
                 .source,
             RetrievalSource::RegionTree
         );
+        let region = router.route(
+            &state,
+            &RetrievalQuery {
+                region_id: Some("region-root".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(region.results[0].id, "region-root");
         assert_eq!(
             router
                 .route(
@@ -810,6 +845,42 @@ mod tests {
                 )
                 .source,
             RetrievalSource::FullObserve
+        );
+    }
+
+    #[test]
+    fn visible_name_is_retrievable_through_bounded_claim_projection() {
+        let router = RetrievalRouter::default();
+        let mut state = state();
+        state.claims[0].value = serde_json::json!("Learn more");
+        let result = router.route(
+            &state,
+            &RetrievalQuery {
+                text: Some("learn more".into()),
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.source, RetrievalSource::Lexical);
+        assert_eq!(result.results[0].value["value"], "Learn more");
+    }
+
+    #[test]
+    fn ambiguous_live_ref_fails_closed() {
+        let router = RetrievalRouter::default();
+        let mut state = state();
+        let duplicate = state.refs[0].clone();
+        state.refs.push(duplicate);
+        let result = router.route(
+            &state,
+            &RetrievalQuery {
+                ref_id: Some("@e1".into()),
+                ..Default::default()
+            },
+        );
+        assert_ne!(result.source, RetrievalSource::DirectRef);
+        assert_eq!(
+            result.receipt.fallback.as_deref(),
+            Some("insufficient_current_state")
         );
     }
 
