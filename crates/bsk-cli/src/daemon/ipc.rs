@@ -2808,7 +2808,7 @@ mod tests {
         assert!(
             state
                 .transfers
-                .resolve_uploads("physical-1", &[transfer_id.clone()])
+                .resolve_uploads("physical-1", std::slice::from_ref(&transfer_id))
                 .is_ok()
         );
         assert!(
