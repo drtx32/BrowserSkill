@@ -36,7 +36,8 @@ Lease safety is Same-page stable logical authority: the controller
 automatically reacquires only its valid lease. If another controller holds it,
 stop rather than competing. Real navigation/page/origin identity changes
 invalidate continuation; stop acting rather than refreshing until `read` or
-`recover` supplies current evidence.
+`recover` supplies current evidence. A real navigation/page/origin identity changes
+invalidate continuation.
 
 ## Default contract: progressive and batch-first
 
@@ -48,12 +49,12 @@ is invalid. Use this mapping:
 
 | concept | CLI command(s) |
 |---|---|
-| `read` | `bsk wiki current|status|view|retrieve|delta` with `bsk snapshot` / `bsk observe` fallback |
+| `read` | `bsk wiki current|status|view|retrieve|delta`; typed `bsk snapshot --json --quiet` is the normal refresh/materialization fallback, while `bsk observe` is explicit evidence/debug fallback |
 | `act` | `bsk click` / `bsk fill` / `bsk select` / `bsk press` / `bsk hover` / `bsk focus` / `bsk upload` / `bsk evaluate` / `bsk scroll-to` |
 | `form` | `bsk fill` + `bsk select` + `bsk press` over refs from one `bsk snapshot` then `bsk wait-for-navigation` |
 | `recover` | `bsk reload` / `bsk navigate-back` / `bsk navigate-forward` / `bsk wait-for-navigation` / `bsk request-help` |
 
-They consume Wiki, current materialization, and targeted deltas. Low-level
+They consume Wiki/materialization/deltas. Low-level
 `observe`, `click`, `fill`, `select`, `get-html`, `console`, `network`,
 `lease`, and `session` operations are starter/full/debug compatibility or an
 explicit fallback, not the default workflow.
@@ -62,25 +63,24 @@ For canonical identity evidence, use `bsk snapshot --json --quiet` as the
 canonical projection entry point. The current runtime seeds/materializes the
 authoritative projection by default for snapshot, so normal use does not need
 an extra materialization step. Prefer typed `fields` and `revision`; each
-field may carry a canonical `address`, target identity, binding, and ambiguity
-marker. Re-snapshot only after a meaningful page-state change, then use the
-canonical projection or a targeted delta. Duplicate canonical addresses are
-ambiguous and fail closed: do not choose or mutate a winner. Treat any
-`canonical_diagnostic` as diagnostic evidence only; it never grants authority
-or substitutes for a verified current identity.
+  field may carry a canonical `address`, target identity, binding, and ambiguity
+  marker. Re-snapshot only after meaningful page-state change. Duplicate
+  canonical addresses fail closed: do not choose or mutate a winner; diagnostic
+  evidence never grants authority or substitutes for verified current identity.
 
 - `read`: retrieve bounded Wiki/current text, regions, refs, or deltas first;
   report stale, incomplete, unavailable, or `full_refresh_required` receipts.
   A persistent Wiki is a read-only projection, never live mutation authority.
-  Wiki reads require daemon gate `BSK_WIKI_READ`. For
-  `not_found` / `current_page_unavailable`, run one `tool.observe`
-  (single-shot), then retry Wiki once. For `wiki current`
-  `code=not_found reason=current_page_unavailable` (the `unsupported` symptom),
-  do not re-observe: verify the logical session's Agent Window tab is on a
-  drivable URL. On `chrome://`, Web Store, or an internal page, run
-  `bsk session stop <stale>` then `bsk bootstrap --browser <id-or-label>`;
-  `--browser` is required with more than one browser online. This closes only
-  the Agent Window and preserves profile, `data_dir`, and login.
+  Wiki reads require daemon gate `BSK_WIKI_READ`. Targeted retrieval supports
+  `wiki retrieve --text <literal>`, `--ref-id <live-ref>`, `--region-id <live-region>`,
+  `--since-revision N`; standalone delta uses `wiki delta --from-revision N`.
+  Lexical retrieval is bounded canonical accessible-name/display-text evidence,
+  not raw DOM/page-text persistence. For `insufficient_current_state` or stale
+  `first_observation_pending` on a drivable page, take ONE fresh typed
+  `bsk snapshot --json --quiet` on that page and retry once; never observe-loop
+  or re-navigate. For true `current_page_unavailable`, observe once and retry;
+  on an internal/non-drivable page, stop the stale Agent Window and bootstrap/
+  rebind, preserving profile, `data_dir`, and login.
 - `act`: perform a requested action using a verified target and stop when
   success is visible. Recheck an ambiguous result once, inspect unknown
   effects before retrying, and never blindly replay a mutation.
@@ -95,10 +95,6 @@ or substitutes for a verified current identity.
   the browser and session. After two unproductive attempts or a failed
   operation, request human help rather than looping or bypassing controls.
 
-For alternate browsers, verify `bsk browsers` and the `--browser` selector.
-Outside `default`, pass the actual `--session <id>`. Read `bsk --help` when
-syntax is unfamiliar.
-
 ## Borrowing and human-only steps
 
 List user tabs before borrowing and return them promptly:
@@ -112,9 +108,9 @@ bsk tab return <tab-id> --session <id>
 Never invent tab ids. Popups need concrete opener/action/session lineage or
 explicit borrowing. CAPTCHA, OTP, consent, payment, and sign-in are
 human-help steps and fail closed; do not guess, auto-confirm, disable help, or
-bypass a borrow confirmation. Read the matching bundled reference for files,
-screenshots/Canvas, interaction details, profiles/tabs, debugging, or human
-help and recovery. Do not preload unrelated references. References:
+  bypass a borrow confirmation. Read the matching bundled reference for files,
+  screenshots/Canvas, interaction details, profiles/tabs, debugging, or human
+  help and recovery. References:
 [environment](references/environment.md), [tabs and profiles](references/tabs-and-profiles.md),
 [debugging](references/debugging.md), [files](references/files.md),
 [screenshots and Canvas](references/screenshots-and-canvas.md),
