@@ -41,10 +41,10 @@ invalidate continuation; stop acting rather than refreshing until `read` or
 ## Default contract: progressive and batch-first
 
 After bootstrap, use the high-level operations in this order: `read`, `act`,
-`form`, `navigate`, and `recover`. These are operation-layer concepts from
-ELI-301/305 (the DSH `browser_act`, `browser_form`, etc. surface), not literal
-`bsk` subcommands. The literal `error: unrecognized subcommand 'read'` proves
-that `bsk read` is invalid. Use this mapping:
+`form`, `navigate`, and `recover`. These are ELI-301/305 operation-layer
+concepts (the DSH `browser_act`, `browser_form`, etc. surface), not literal
+`bsk` subcommands. `error: unrecognized subcommand 'read'` proves `bsk read`
+is invalid. Use this mapping:
 
 | concept | CLI command(s) |
 |---|---|
@@ -53,7 +53,7 @@ that `bsk read` is invalid. Use this mapping:
 | `form` | `bsk fill` + `bsk select` + `bsk press` over refs from one `bsk snapshot` then `bsk wait-for-navigation` |
 | `recover` | `bsk reload` / `bsk navigate-back` / `bsk navigate-forward` / `bsk wait-for-navigation` / `bsk request-help` |
 
-They consume the canonical Browser Wiki, current materialization, and targeted deltas when available. Low-level
+They consume Wiki, current materialization, and targeted deltas. Low-level
 `observe`, `click`, `fill`, `select`, `get-html`, `console`, `network`,
 `lease`, and `session` operations are starter/full/debug compatibility or an
 explicit fallback, not the default workflow.
@@ -72,16 +72,15 @@ or substitutes for a verified current identity.
 - `read`: retrieve bounded Wiki/current text, regions, refs, or deltas first;
   report stale, incomplete, unavailable, or `full_refresh_required` receipts.
   A persistent Wiki is a read-only projection, never live mutation authority.
-  Wiki reads are daemon-gated by `BSK_WIKI_READ`. If a read receipt is
+  Wiki reads require daemon gate `BSK_WIKI_READ`. For
   `not_found` / `current_page_unavailable`, run one `tool.observe`
-  (single-shot), then retry the Wiki read once. If `wiki current` returns
+  (single-shot), then retry Wiki once. For `wiki current`
   `code=not_found reason=current_page_unavailable` (the `unsupported` symptom),
-  do not loop re-observe: verify the logical session's Agent Window
-  tab is on a drivable URL. If it is on `chrome://`, the Web Store, or another
-  internal page, run `bsk session stop <stale>` then
-  `bsk bootstrap --browser <id-or-label>`; `--browser` is required whenever
-  more than one browser is online. This closes only the Agent Window and
-  preserves the profile, `data_dir`, and login.
+  do not re-observe: verify the logical session's Agent Window tab is on a
+  drivable URL. On `chrome://`, Web Store, or an internal page, run
+  `bsk session stop <stale>` then `bsk bootstrap --browser <id-or-label>`;
+  `--browser` is required with more than one browser online. This closes only
+  the Agent Window and preserves profile, `data_dir`, and login.
 - `act`: perform a requested action using a verified target and stop when
   success is visible. Recheck an ambiguous result once, inspect unknown
   effects before retrying, and never blindly replay a mutation.
