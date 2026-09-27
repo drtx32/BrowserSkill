@@ -129,6 +129,16 @@ impl ShadowWikiStore {
             let Some(object) = event.payload.as_object() else {
                 continue;
             };
+            // Projection events are complete typed snapshots. Replacing their
+            // collections retracts stale refs/blockers instead of replaying
+            // historical materialization forever.
+            if object.contains_key("projection_revision") {
+                read.regions.clear();
+                read.refs.clear();
+                read.claims.clear();
+                read.deltas.clear();
+                read.blockers.clear();
+            }
             extend_json(object, "regions", &mut read.regions);
             extend_json(object, "refs", &mut read.refs);
             extend_json(object, "claims", &mut read.claims);
@@ -145,8 +155,11 @@ impl ShadowWikiStore {
                 read.ownership = Some(value.clone());
             }
             if let Some(values) = object.get("blockers").and_then(Value::as_array) {
-                read.blockers
-                    .extend(values.iter().filter_map(Value::as_str).map(str::to_owned));
+                read.blockers = values
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_owned)
+                    .collect();
             }
         }
         Some(read)

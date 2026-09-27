@@ -960,6 +960,12 @@ fn materialize_wiki_observation_for_browser(
         .cloned()
         .unwrap_or_default();
     let region_id = format!("projection:{document_id}");
+    let page_revision = state
+        .wiki
+        .page(&page_id)
+        .map(|page| page.revision)
+        .unwrap_or(0);
+    let projection_revision = page_revision + 1;
     let claims: Vec<Value> = fields
         .iter()
         .enumerate()
@@ -973,30 +979,51 @@ fn materialize_wiki_observation_for_browser(
                 "claim_id": format!("projection-{index}-{subject_id}"),
                 "subject_id": subject_id,
                 "predicate": "observed",
-                "value": field.get("target").cloned().unwrap_or(Value::Null),
+                "value": field.get("display_text").cloned().filter(|value| !value.is_null())
+                    .unwrap_or_else(|| field.get("target").cloned().unwrap_or(Value::Null)),
                 "trust": "ground_truth", "status": "active", "evidence_event_ids": [],
-                "evidence_revision": 0, "last_verified_revision": null, "confidence": 1.0,
+                "evidence_revision": projection_revision, "last_verified_revision": projection_revision, "confidence": 1.0,
                 "provenance": {"kind": "observed", "author": "browser", "evidence_event_ids": []},
-                "valid_from_revision": 0, "valid_until_revision": null
+                "valid_from_revision": projection_revision, "valid_until_revision": null
+            }))
+        })
+        .collect();
+    let refs: Vec<Value> = fields
+        .iter()
+        .filter_map(|field| {
+            let ref_id = field
+                .get("binding")
+                .or_else(|| field.get("target"))?
+                .as_str()?;
+            let target_id = field.get("target_id")?.as_str()?;
+            Some(serde_json::json!({
+                "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION,
+                "ref_id": ref_id,
+                "page_instance_id": page_id,
+                "region_id": region_id,
+                "interaction_kind": "canonical",
+                "lifecycle": "live",
+                "last_observed_revision": projection_revision,
+                "target_id": target_id
             }))
         })
         .collect();
     let regions = vec![serde_json::json!({
         "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION, "region_id": region_id,
         "page_instance_id": page_id, "parent_region_id": null, "kind": "content",
-        "locator": document_id, "bounds": null, "revision_first_seen": 0,
-        "revision_last_seen": 0, "status": "active", "completeness": "complete"
+        "locator": document_id, "bounds": null, "revision_first_seen": projection_revision,
+        "revision_last_seen": projection_revision, "status": "active", "completeness": "complete"
     })];
     let deltas = vec![serde_json::json!({
         "schema_version": bsk_protocol::WIKI_SCHEMA_VERSION, "page_instance_id": page_id,
-        "from_revision": 0, "to_revision": 0, "added": fields,
+        "from_revision": page_revision, "to_revision": projection_revision, "added": fields,
         "changed": [], "removed": [], "dirty_regions": [region_id],
         "completeness": "complete", "fallback_reason": null
     })];
     let payload = serde_json::json!({
         "fields": result.get("fields").cloned().unwrap_or(Value::Array(Vec::new())),
-        "projection_revision": result.get("revision").cloned().unwrap_or(Value::Null),
-        "claims": claims, "regions": regions, "deltas": deltas,
+        "projection_revision": projection_revision,
+        "claims": claims, "refs": refs, "regions": regions, "deltas": deltas,
         "blockers": if fields.is_empty() { vec!["first_observation_pending"] } else { vec![] },
         "added": result.get("fields").cloned().unwrap_or(Value::Array(Vec::new())),
         "dirty_regions": [region_id]
@@ -2777,6 +2804,24 @@ mod tests {
         assert!(!value["claims"].as_array().unwrap().is_empty());
         assert!(!value["active_regions"].as_array().unwrap().is_empty());
         assert!(!value["recent_deltas"].as_array().unwrap().is_empty());
+
+        let page_id = state.wiki.active_pages_for_session("default")[0]
+            .page_instance_id
+            .clone();
+        let read_state = state
+            .wiki
+            .read_state(&page_id, &state.wiki.page(&page_id).unwrap().scope)
+            .unwrap();
+        assert_eq!(read_state.refs.len(), 1);
+        assert_eq!(read_state.refs[0].ref_id, "@e1");
+        assert_eq!(read_state.deltas[0].from_revision, 1);
+        assert_eq!(read_state.deltas[0].to_revision, 2);
+        assert!(
+            !read_state
+                .blockers
+                .iter()
+                .any(|b| b == "first_observation_pending")
+        );
 
         let events = state
             .wiki

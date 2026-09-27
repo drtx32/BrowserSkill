@@ -20,6 +20,8 @@ export interface CanonicalSnapshotField {
   target_id?: string;
   binding?: string;
   address?: string;
+  /** Bounded accessible name evidence; never raw page text or form values. */
+  display_text?: string;
   ambiguous?: boolean;
   revision?: string;
 }
@@ -116,6 +118,7 @@ export function readCanonicalSnapshot(input: {
             target_id: result.target.target_id,
             binding,
             address: canonicalSemanticAddress(result.target.address),
+            ...(ref.name ? { display_text: ref.name.slice(0, 256) } : {}),
             revision,
           }
         : {
