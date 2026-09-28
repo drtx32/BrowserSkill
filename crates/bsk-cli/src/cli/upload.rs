@@ -67,17 +67,21 @@ pub fn dispatch(args: UploadArgs, format: Format) -> Result<(), CliError> {
     let info = ensure_daemon().context("ensure daemon is running")?;
     let (ref_, selector) = split_target(args.target, args.ref_, args.selector)?;
     let mut staged = Vec::new();
+    let mut session = args.session.clone();
     for path in &args.files {
-        if let Err(err) = stage_file(&info.sock_path, &args.session, path, &mut staged) {
-            let _ = crate::cli::business_rpc::release_transfers(
-                &info.sock_path,
-                staged.iter().map(|(id, _)| id.as_str()),
-            );
-            return Err(err);
+        match stage_file(&info.sock_path, &session, path, &mut staged) {
+            Ok(resolved) => session = resolved,
+            Err(err) => {
+                let _ = crate::cli::business_rpc::release_transfers(
+                    &info.sock_path,
+                    staged.iter().map(|(id, _)| id.as_str()),
+                );
+                return Err(err);
+            }
         }
     }
     let params = UploadParams {
-        session_id: args.session,
+        session_id: session,
         ref_,
         selector,
         tab_id: args.tab_id,
@@ -131,7 +135,7 @@ fn stage_file(
     session: &str,
     path: &PathBuf,
     staged: &mut Vec<(String, String)>,
-) -> Result<(), CliError> {
+) -> Result<String, CliError> {
     let mut file = File::open(path)
         .with_context(|| format!("open upload file {}", path.display()))
         .map_err(CliError::Local)?;
@@ -194,7 +198,7 @@ fn stage_file(
         }),
         Duration::from_secs(10),
     )?;
-    Ok(())
+    Ok(begin.resolved_session_id)
 }
 
 fn ipc_timeout(timeout_ms: u32) -> Duration {

@@ -191,6 +191,7 @@ impl TransferRegistry {
             .open(&path)
             .map_err(io_error)?;
         set_private_file(&file).map_err(io_error)?;
+        let resolved_session_id = p.session_id.clone();
         entries.insert(
             id.clone(),
             Entry {
@@ -205,6 +206,7 @@ impl TransferRegistry {
         Ok(TransferBeginResult {
             transfer_id: id,
             chunk_size: TRANSFER_CHUNK_SIZE,
+            resolved_session_id,
         })
     }
 

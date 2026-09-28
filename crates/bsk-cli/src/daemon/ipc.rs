@@ -1029,21 +1029,31 @@ fn materialize_wiki_observation_for_browser(
 }
 
 fn handle_transfer_begin(state: &Arc<DaemonState>, params: Value) -> ResponseBody {
-    let p: TransferBeginParams = match serde_json::from_value(params) {
+    let mut p: TransferBeginParams = match serde_json::from_value(params) {
         Ok(v) => v,
         Err(err) => return ResponseBody::Err(invalid_params(err.to_string())),
     };
-    if state
-        .sessions
-        .get(&SessionId(p.session_id.clone()))
-        .is_none()
+    let physical_session = match state
+        .logical_sessions
+        .resolve(&state.sessions, &p.session_id)
     {
+        Some(id) => id,
+        None => {
+            return ResponseBody::Err(RpcError {
+                code: ErrorCode::NotFound,
+                message: format!("session {} unknown", p.session_id),
+                data: None,
+            });
+        }
+    };
+    if state.sessions.get(&physical_session).is_none() {
         return ResponseBody::Err(RpcError {
             code: ErrorCode::NotFound,
             message: format!("session {} unknown", p.session_id),
             data: None,
         });
     }
+    p.session_id = physical_session.0;
     match state.transfers.begin_upload(p) {
         Ok(v) => ResponseBody::Ok(serde_json::to_value(v).unwrap_or(Value::Null)),
         Err(err) => ResponseBody::Err(err),
@@ -2749,6 +2759,140 @@ mod tests {
                 assert_eq!(error.data.unwrap()["fallback"], "tool.observe");
             }
             other => panic!("expected unsupported response, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transfer_begin_resolves_default_to_the_live_physical_session() {
+        let _lock = crate::daemon::logical_session::test_env_lock();
+        let temp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var(crate::daemon::paths::BSK_HOME_ENV, temp.path().join("bsk"));
+        }
+        let daemon = DaemonState::new(DaemonConfig::new(0));
+        let physical = crate::daemon::sessions::SessionId("physical-1".into());
+        daemon.sessions.insert(crate::daemon::sessions::Session {
+            interaction: None,
+            id: physical.clone(),
+            browser_id: crate::daemon::browsers::BrowserId("browser".into()),
+            agent_window_id: Some(1),
+            created_at_ms: 0,
+        });
+        daemon.logical_sessions.set_default(&physical).unwrap();
+        let state = Arc::new(daemon);
+
+        let response = handle_transfer_begin(
+            &state,
+            serde_json::json!({"session_id": "default", "name": "file.txt", "byte_size": 0}),
+        );
+        let ResponseBody::Ok(value) = response else {
+            panic!("expected transfer begin to resolve default");
+        };
+        let transfer_id = value["transfer_id"].as_str().unwrap().to_owned();
+        state
+            .transfers
+            .finish_upload(bsk_protocol::tools::TransferIdParams {
+                transfer_id: transfer_id.clone(),
+            })
+            .unwrap();
+        assert!(
+            state
+                .transfers
+                .resolve_uploads("physical-1", std::slice::from_ref(&transfer_id))
+                .is_ok()
+        );
+        assert!(
+            state
+                .transfers
+                .resolve_uploads("default", &[transfer_id])
+                .is_err()
+        );
+        unsafe {
+            std::env::remove_var(crate::daemon::paths::BSK_HOME_ENV);
+        }
+    }
+
+    #[test]
+    fn transfer_begin_pins_all_files_when_default_rebinds_mid_upload() {
+        let _lock = crate::daemon::logical_session::test_env_lock();
+        let temp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var(crate::daemon::paths::BSK_HOME_ENV, temp.path().join("bsk"));
+        }
+        let daemon = DaemonState::new(DaemonConfig::new(0));
+        let first = crate::daemon::sessions::SessionId("physical-a".into());
+        let second = crate::daemon::sessions::SessionId("physical-b".into());
+        for id in [&first, &second] {
+            daemon.sessions.insert(crate::daemon::sessions::Session {
+                interaction: None,
+                id: id.clone(),
+                browser_id: crate::daemon::browsers::BrowserId("browser".into()),
+                agent_window_id: Some(1),
+                created_at_ms: 0,
+            });
+        }
+        daemon.logical_sessions.set_default(&first).unwrap();
+        let state = Arc::new(daemon);
+
+        let begin = |name: &str, session_id: &str| {
+            let ResponseBody::Ok(value) = handle_transfer_begin(
+                &state,
+                serde_json::json!({
+                    "session_id": session_id,
+                    "name": name,
+                    "byte_size": 0
+                }),
+            ) else {
+                panic!("expected transfer begin to succeed");
+            };
+            serde_json::from_value::<bsk_protocol::tools::TransferBeginResult>(value).unwrap()
+        };
+
+        let first_file = begin("one.txt", "default");
+        assert_eq!(first_file.resolved_session_id, "physical-a");
+        state.logical_sessions.set_default(&second).unwrap();
+        let second_file = begin("two.txt", &first_file.resolved_session_id);
+        assert_eq!(second_file.resolved_session_id, "physical-a");
+
+        for transfer_id in [&first_file.transfer_id, &second_file.transfer_id] {
+            state
+                .transfers
+                .finish_upload(bsk_protocol::tools::TransferIdParams {
+                    transfer_id: (*transfer_id).clone(),
+                })
+                .unwrap();
+        }
+        let ids = vec![first_file.transfer_id, second_file.transfer_id];
+        assert!(state.transfers.resolve_uploads("physical-a", &ids).is_ok());
+        assert!(state.transfers.resolve_uploads("physical-b", &ids).is_err());
+        unsafe {
+            std::env::remove_var(crate::daemon::paths::BSK_HOME_ENV);
+        }
+    }
+
+    #[test]
+    fn transfer_begin_rejects_unknown_default_before_staging() {
+        let _lock = crate::daemon::logical_session::test_env_lock();
+        let temp = TempDir::new().unwrap();
+        let home = temp.path().join("bsk");
+        unsafe {
+            std::env::set_var(crate::daemon::paths::BSK_HOME_ENV, &home);
+        }
+        let state = Arc::new(DaemonState::new(DaemonConfig::new(0)));
+        let response = handle_transfer_begin(
+            &state,
+            serde_json::json!({"session_id": "default", "name": "file.txt", "byte_size": 0}),
+        );
+        match response {
+            ResponseBody::Err(error) => {
+                assert_eq!(error.code, ErrorCode::NotFound);
+                assert_eq!(error.message, "session default unknown");
+            }
+            other => panic!("expected unknown session error, got {other:?}"),
+        }
+        assert!(!home.join("run/transfers").exists());
+        unsafe {
+            std::env::remove_var(crate::daemon::paths::BSK_HOME_ENV);
         }
     }
 
