@@ -2823,6 +2823,64 @@ mod tests {
     }
 
     #[test]
+    fn transfer_begin_pins_all_files_when_default_rebinds_mid_upload() {
+        let _lock = crate::daemon::logical_session::test_env_lock();
+        let temp = TempDir::new().unwrap();
+        unsafe {
+            std::env::set_var(crate::daemon::paths::BSK_HOME_ENV, temp.path().join("bsk"));
+        }
+        let daemon = DaemonState::new(DaemonConfig::new(0));
+        let first = crate::daemon::sessions::SessionId("physical-a".into());
+        let second = crate::daemon::sessions::SessionId("physical-b".into());
+        for id in [&first, &second] {
+            daemon.sessions.insert(crate::daemon::sessions::Session {
+                interaction: None,
+                id: id.clone(),
+                browser_id: crate::daemon::browsers::BrowserId("browser".into()),
+                agent_window_id: Some(1),
+                created_at_ms: 0,
+            });
+        }
+        daemon.logical_sessions.set_default(&first).unwrap();
+        let state = Arc::new(daemon);
+
+        let begin = |name: &str, session_id: &str| {
+            let ResponseBody::Ok(value) = handle_transfer_begin(
+                &state,
+                serde_json::json!({
+                    "session_id": session_id,
+                    "name": name,
+                    "byte_size": 0
+                }),
+            ) else {
+                panic!("expected transfer begin to succeed");
+            };
+            serde_json::from_value::<bsk_protocol::tools::TransferBeginResult>(value).unwrap()
+        };
+
+        let first_file = begin("one.txt", "default");
+        assert_eq!(first_file.resolved_session_id, "physical-a");
+        state.logical_sessions.set_default(&second).unwrap();
+        let second_file = begin("two.txt", &first_file.resolved_session_id);
+        assert_eq!(second_file.resolved_session_id, "physical-a");
+
+        for transfer_id in [&first_file.transfer_id, &second_file.transfer_id] {
+            state
+                .transfers
+                .finish_upload(bsk_protocol::tools::TransferIdParams {
+                    transfer_id: (*transfer_id).clone(),
+                })
+                .unwrap();
+        }
+        let ids = vec![first_file.transfer_id, second_file.transfer_id];
+        assert!(state.transfers.resolve_uploads("physical-a", &ids).is_ok());
+        assert!(state.transfers.resolve_uploads("physical-b", &ids).is_err());
+        unsafe {
+            std::env::remove_var(crate::daemon::paths::BSK_HOME_ENV);
+        }
+    }
+
+    #[test]
     fn transfer_begin_rejects_unknown_default_before_staging() {
         let _lock = crate::daemon::logical_session::test_env_lock();
         let temp = TempDir::new().unwrap();

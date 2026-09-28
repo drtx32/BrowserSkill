@@ -117,6 +117,9 @@ pub struct TransferBeginParams {
 pub struct TransferBeginResult {
     pub transfer_id: String,
     pub chunk_size: u32,
+    /// Physical session selected for this transfer. The CLI pins the rest of
+    /// a multi-file upload and its final tool.upload call to this id.
+    pub resolved_session_id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
