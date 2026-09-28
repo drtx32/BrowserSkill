@@ -99,6 +99,55 @@ For alternate browsers, verify `bsk browsers` and the `--browser` selector.
 Outside `default`, pass the actual `--session <id>`. Read `bsk --help` when
 syntax is unfamiliar.
 
+### Wiki retrieval decision policy
+
+Choose the narrowest stable selector that matches the information need. Do not default to text search or full snapshot when a stronger selector is already known.
+
+1. **Known live canonical target / ref** → `wiki retrieve --ref-id @eN` only for the current page instance. A ref is ephemeral and must not be reused after page/snapshot replacement.
+2. **Known semantic region** → `wiki retrieve --region-id <region>`.
+3. **Known revision boundary / "what changed?"** → `wiki delta --from-revision N`; use `retrieve --since-revision N` only when asking for current evidence constrained by revision. Do not interchange these flags.
+4. **Known visible text / label but no stronger identity** → `wiki retrieve --text "..."`; treat matches as evidence candidates, not mutation authority.
+5. **Need current page summary/state** → `wiki current` / `status` / `view` before broader retrieval.
+6. **No suitable selector / current materialization insufficient** → one fresh `snapshot --json --quiet` after a meaningful page-state change, then retry the narrow query once.
+7. **Still insufficient** → bounded `observe` fallback once; never loop observe.
+
+Rules:
+- Prefer canonical identity/address/region/revision over free text when available.
+- Search by text is discovery, not durable identity.
+- A stale/incomplete/not_found/full_refresh_required receipt is control information: follow its safe next step; do not blindly widen.
+- Never use Wiki as a second identity store or live mutation authority.
+- If multiple candidates remain ambiguous, fail closed rather than selecting by rank alone.
+- For questions that ask about content already present in the canonical projection, consume that projection directly before invoking Wiki retrieval.
+
+Validate wording against the actual 0.3.1 CLI flags and preserve ELI-300/301 identity/privacy rules.
+
+### Page evidence contract
+
+Treat the canonical snapshot/projection as **page evidence, not merely as a source of `@eN` refs**. Consume fields that already exist in the current projection before escalating to another retrieval path.
+
+- visible content / labels → `name`, visible text, `value`
+- destination / navigation target → `href`
+- element semantics → `role`
+- spatial position / hierarchy → `rect`, `region`, parent/depth
+- interactability / obstruction → `states`, `layer`
+- semantic relationships → `relations` (for example controls / popup / labelledby / describedby / owns)
+- frame / context boundary → `frameId`, `contextScopeId`
+- list coverage → `completeness`, virtualized-list evidence
+
+If the current projection already contains the fact needed to answer or act, use that evidence directly. Retrieve only the missing detail: targeted Wiki/current/retrieve/delta first, then one fresh `snapshot --json --quiet` after a meaningful page-state change, then bounded fallback. **Do not full-observe merely to recover a field already present in the current projection.**
+
+For page-understanding questions, select evidence by the user's question rather than by habit:
+- “what does it say?” → content fields
+- “where does it go?” → `href`
+- “what kind of control is it?” → `role`
+- “where is it?” → `rect` / `region` / hierarchy
+- “can I interact with it now?” → `states` / `layer`
+- “what is it related to?” → `relations`
+- “which frame/context?” → `frameId` / `contextScopeId`
+- “did we read the whole list?” → `completeness` / virtualization evidence
+
+Canonical identity remains independent of `@eN`; refs are ephemeral handles, not durable identity.
+
 ## Borrowing and human-only steps
 
 List user tabs before borrowing and return them promptly:
