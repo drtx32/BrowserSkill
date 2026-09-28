@@ -24,7 +24,7 @@ use tokio_tungstenite::tungstenite::handshake::client::generate_key;
 use tokio_tungstenite::tungstenite::http::Request;
 use tokio_tungstenite::tungstenite::protocol::Message;
 
-use support::{wait_for_browser_count, wait_for_no_sessions};
+use support::{wait_for_browser_count, wait_for_no_sessions, wait_for_session_count};
 
 const TEST_EXT_ID: &str = "abcdefghijklmnopabcdefghijklmnop";
 
@@ -1168,7 +1168,7 @@ async fn session_window_closed_event_purges_session() {
 }
 
 #[tokio::test]
-async fn browser_disconnect_purges_sessions() {
+async fn browser_disconnect_preserves_recoverable_sessions() {
     let (handle, _sock) = spawn_daemon().await;
     let mut ws = connect_ext(handle.ws_addr()).await;
     let _ = handshake_as_ext(&mut ws).await;
@@ -1188,7 +1188,54 @@ async fn browser_disconnect_purges_sessions() {
 
     let _ = ws.close(None).await;
     drop(ws);
+    wait_for_browser_count(&state, 0).await;
+    assert_eq!(
+        state.sessions.len(),
+        1,
+        "transient transport loss must preserve recoverable sessions"
+    );
+
+    handle.shutdown().await;
+}
+
+#[tokio::test]
+async fn proven_browser_liveness_expiry_purges_session_resources() {
+    let config = DaemonConfig::new(0)
+        .with_browser_liveness(Duration::from_millis(30), Duration::from_millis(10));
+    let sock = tempfile_path("bsk-test-liveness");
+    let handle = daemon::run(config, Some(sock)).await.unwrap();
+    let mut ws = connect_ext(handle.ws_addr()).await;
+    let _ = handshake_as_ext(&mut ws).await;
+    let heartbeat = bsk_protocol::EventFrame {
+        event: bsk_protocol::EventKind::SystemHeartbeat,
+        payload: serde_json::json!({}),
+    };
+    ws.send(Message::Text(
+        serde_json::to_string(&bsk_protocol::Frame::Event(heartbeat)).unwrap(),
+    ))
+    .await
+    .unwrap();
+
+    let state = handle.state();
+    let session_id = bsk::daemon::sessions::SessionId("liveness-session".into());
+    state.sessions.insert(bsk::daemon::sessions::Session {
+        interaction: None,
+        id: session_id.clone(),
+        browser_id: bsk::daemon::browsers::BrowserId(TEST_EXT_ID.into()),
+        agent_window_id: Some(8),
+        created_at_ms: 0,
+    });
+    state.tool_queues.spawn(session_id);
+    assert_eq!(state.sessions.len(), 1);
+    assert_eq!(state.tool_queues.len(), 1);
+
+    wait_for_browser_count(&state, 0).await;
     wait_for_no_sessions(&state).await;
+    assert_eq!(
+        state.tool_queues.len(),
+        0,
+        "liveness expiry must release owned queue resources"
+    );
 
     handle.shutdown().await;
 }
@@ -1294,13 +1341,13 @@ async fn session_stop_self_heals_when_extension_reports_not_found() {
 }
 
 #[tokio::test]
-async fn reconnect_with_same_instance_id_purges_stale_sessions_but_keeps_new_browser() {
+async fn reconnect_with_same_instance_id_preserves_session_and_new_browser() {
     // Spawn a daemon, connect ext A, register a session bound to it,
     // then connect ext B reusing the same instance_id (mimics a SW
-    // restart / WS reconnect under MV3). The extension now safely stops
-    // its local sessions before reconnecting, so the new handshake must
-    // purge the matching daemon rows. The generation guard must still keep
-    // the NEW browser registration when the old WS task later tears down.
+    // restart / WS reconnect under MV3). The daemon keeps the persistent
+    // session available for the new transport. The generation guard must
+    // still keep the NEW browser registration when the old WS task later
+    // tears down.
 
     let (handle, _sock) = spawn_daemon().await;
     let mut ws_a = connect_ext(handle.ws_addr()).await;
@@ -1323,7 +1370,7 @@ async fn reconnect_with_same_instance_id_purges_stale_sessions_but_keeps_new_bro
     let _ = handshake_as_ext(&mut ws_b).await;
     // Registry now holds the newer generation under the same id.
     assert_eq!(state.browsers.len(), 1);
-    wait_for_no_sessions(&state).await;
+    wait_for_session_count(&state, 1).await;
 
     // Tear down ext A only; the cleanup path will run but must
     // observe that the registered generation no longer matches and
@@ -1339,8 +1386,8 @@ async fn reconnect_with_same_instance_id_purges_stale_sessions_but_keeps_new_bro
     );
     assert_eq!(
         state.sessions.len(),
-        0,
-        "stale sessions must not survive reconnect"
+        1,
+        "valid persistent session must survive reconnect"
     );
 
     let _ = ws_b.close(None).await;

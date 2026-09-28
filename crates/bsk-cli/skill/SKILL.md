@@ -34,7 +34,7 @@ resume context.
 
 Lease safety is Same-page stable logical authority: the controller
 automatically reacquires only its valid lease. If another controller holds it,
-stop rather than competing. Real navigation/page/origin identity changes
+stop rather than competing. Any real navigation/page/origin identity changes
 invalidate continuation; stop acting rather than refreshing until `read` or
 `recover` supplies current evidence.
 
