@@ -9,6 +9,11 @@ use crate::cli::business_rpc::call;
 use crate::cli::ensure_daemon::ensure_daemon;
 use crate::cli::error::{CliError, Format};
 
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
+struct LeaseReleaseResult {
+    released: bool,
+}
+
 #[derive(Debug, Clone, Args)]
 pub struct LeaseCmd {
     #[command(subcommand)]
@@ -73,6 +78,19 @@ pub fn dispatch(cmd: LeaseCmd, format: Format) -> Result<(), CliError> {
             serde_json::json!({"browser_instance_id": a.browser, "owner": "status"}),
         ),
     };
+    if method == Method::LeaseRelease {
+        let value: LeaseReleaseResult =
+            call(sock, "lease", method, Some(params), Duration::from_secs(5))?;
+        match format {
+            Format::Json => println!(
+                "{}",
+                serde_json::to_string_pretty(&value).map_err(|e| CliError::Local(e.into()))?
+            ),
+            Format::Human => println!("lease released: {}", value.released),
+        }
+        return Ok(());
+    }
+
     let value: BrowserLeaseStatus = if method == Method::LeaseStatus {
         call(
             sock,
