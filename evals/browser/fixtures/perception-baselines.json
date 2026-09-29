@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "description": "P0 perception fixture baselines. These are current HTML evidence baselines, not behavior targets.",
+  "scenarios": {
+    "ordinary-form": { "path": "/perception/ordinary-form", "marker": "PERCEPTION-ORDINARY-FORM", "ambiguity": 0, "nodeCount": 20, "htmlBytes": 2923, "compactBytes": 104 },
+    "duplicate-controls": { "path": "/perception/duplicate-controls", "marker": "PERCEPTION-DUPLICATE-CONTROLS", "ambiguity": 2, "nodeCount": 18, "htmlBytes": 2865, "compactBytes": 114 },
+    "modal": { "path": "/perception/modal", "marker": "PERCEPTION-MODAL", "ambiguity": 0, "nodeCount": 19, "htmlBytes": 3084, "compactBytes": 88 },
+    "iframe": { "path": "/perception/iframe", "marker": "PERCEPTION-IFRAME", "ambiguity": 0, "nodeCount": 13, "htmlBytes": 2729, "compactBytes": 90 },
+    "iframe-child": { "path": "/perception/iframe-child", "marker": "PERCEPTION-IFRAME-CHILD", "ambiguity": 0, "nodeCount": 15, "htmlBytes": 2778, "compactBytes": 102 },
+    "stale-ref": { "path": "/perception/stale-ref", "marker": "PERCEPTION-STALE-REF", "ambiguity": 0, "nodeCount": 15, "htmlBytes": 2960, "compactBytes": 96 },
+    "resume-sections": { "path": "/perception/resume-sections", "marker": "PERCEPTION-RESUME-SECTIONS", "ambiguity": 2, "nodeCount": 25, "htmlBytes": 3193, "compactBytes": 108 }
+  }
+}
