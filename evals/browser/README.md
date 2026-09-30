@@ -257,3 +257,19 @@ the case and expected baseline in the same reviewed change.
 The direct smoke lane covers 25 of 28 operations. `tabs.borrow`, `tabs.return`, and
 `assist.request-help` stay manual because they require a real user tab or human interaction and
 would make the default suite destructive or non-deterministic.
+
+### Live perception baselines
+
+The perception fixture metadata is only a deterministic page-input baseline. To
+capture what the current BrowserSkill implementation actually returns, run the
+live harness with a connected browser and extension:
+
+```bash
+BSK_COMMAND=/path/to/bsk pnpm eval:browser:perception
+```
+
+It writes `fixtures/perception-live.json` with the raw `snapshot` and `observe`
+JSON for each perception scenario plus ref/field/ambiguity, frame-scope, text
+size, and node-proxy metrics. The test suite skips this live lane unless
+`BSK_PERCEPTION_COMMAND` is explicitly set; it never substitutes fixture
+annotations for live ambiguity evidence.

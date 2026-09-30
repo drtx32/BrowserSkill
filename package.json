@@ -6,6 +6,7 @@
     "cli:build": "cargo run -p bsk-protocol --bin dump-schema --locked && pnpm -r build",
     "eval:browser": "node evals/browser/cli.mjs",
     "eval:browser:check": "node evals/browser/cli.mjs validate && node --test evals/browser/tests/*.test.mjs",
+    "eval:browser:perception": "node evals/browser/scripts/capture-perception-baselines.mjs",
     "eval:browser:test": "node --test evals/browser/tests/*.test.mjs",
     "eval:wiki-health": "node evals/wiki-health/run.mjs",
     "skill:check": "node --test scripts/skill-consistency.test.mjs",
